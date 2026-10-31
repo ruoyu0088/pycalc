@@ -149,7 +149,7 @@ function findCallContext(state) {
 }
 
 function makeCompletionSource(getCompletions, getAttributes) {
-  return (context) => {
+  return async (context) => {
     // Attribute completion: x. / np. / np.linalg. / foo.bar
     const word = context.matchBefore(/[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\.?/);
     if (word && word.text.includes('.')) {
@@ -157,7 +157,7 @@ function makeCompletionSource(getCompletions, getAttributes) {
       const expr = word.text.slice(0, dot);
       const prefix = word.text.slice(dot + 1);
       if (!expr) return null;
-      const data = getAttributes(expr, context.state.doc.sliceString(0, context.pos));
+      const data = await getAttributes(expr, context.state.doc.sliceString(0, context.pos));
       if (!data || !data.items || data.items.length === 0) return null;
       // Hide dunders/private members until the user explicitly types "_".
       const options = prefix.startsWith('_')
@@ -204,24 +204,32 @@ function typeHint(getAttributes, onTypeHint) {
       constructor(view) {
         this.view = view;
         this.last = null;
+        this.sequence = 0;
         this.update(view);
       }
 
       update(update) {
         const context = findAttributeContext(update.state);
         if (!context) {
+          this.sequence += 1;
           this.set('');
           return;
         }
-        const data = getAttributes(
-          context.expr,
-          update.state.doc.sliceString(0, update.state.selection.main.head)
-        );
-        if (!data || !data.type) {
-          this.set('');
-          return;
-        }
-        this.set(`${context.expr} : ${data.type}`);
+        const sequence = ++this.sequence;
+        const code = update.state.doc.sliceString(0, update.state.selection.main.head);
+        Promise.resolve()
+          .then(() => getAttributes(context.expr, code))
+          .then((data) => {
+            if (sequence !== this.sequence) return;
+            if (!data || !data.type) {
+              this.set('');
+              return;
+            }
+            this.set(`${context.expr} : ${data.type}`);
+          })
+          .catch(() => {
+            if (sequence === this.sequence) this.set('');
+          });
       }
 
       set(text) {
@@ -246,6 +254,7 @@ function signatureHelp(getSignature, registerController) {
         this.tip.className = 'signature-tip hidden';
         document.body.appendChild(this.tip);
         this.positionTimer = null;
+        this.sequence = 0;
         this.onScroll = () => this.updatePosition();
         this.onBlur = () => this.hide();
         view.scrollDOM.addEventListener('scroll', this.onScroll);
@@ -256,23 +265,37 @@ function signatureHelp(getSignature, registerController) {
 
       update(update) {
         if (completionStatus(update.state) === 'active') {
+          this.sequence += 1;
           this.hide();
           return;
         }
         const call = findCallContext(update.state);
         if (!call) {
+          this.sequence += 1;
           this.hide();
           return;
         }
-        const signature = getSignature(call.name);
-        if (!signature) {
-          this.hide();
-          return;
-        }
+        const sequence = ++this.sequence;
+        Promise.resolve()
+          .then(() => getSignature(call.name))
+          .then((signature) => {
+            if (sequence !== this.sequence) return;
+            if (!signature) {
+              this.hide();
+              return;
+            }
+            this.show(call.name, signature);
+          })
+          .catch(() => {
+            if (sequence === this.sequence) this.hide();
+          });
+      }
+
+      show(nameText, signature) {
         this.tip.textContent = '';
         const name = document.createElement('span');
         name.className = 'sig-name';
-        name.textContent = call.name;
+        name.textContent = nameText;
         const args = document.createElement('span');
         args.className = 'sig-args';
         args.textContent = signature;
@@ -381,7 +404,23 @@ export function create(parent, options = {}) {
         run: (view) => {
           if (view.composing) return false;
           if (completionStatus(view.state) === 'active') return false;
-          return onTryEnter() === true;
+          let outcome;
+          try {
+            outcome = onTryEnter();
+          } catch (_) {
+            return false;
+          }
+          if (outcome === true) return true;
+          if (outcome && typeof outcome.then === 'function') {
+            outcome
+              .then((shouldRun) => {
+                if (shouldRun) onRun();
+                else insertNewlineAndIndent(view);
+              })
+              .catch(() => insertNewlineAndIndent(view));
+            return true;
+          }
+          return false;
         },
       },
       { key: 'Shift-Enter', run: insertNewlineAndIndent },

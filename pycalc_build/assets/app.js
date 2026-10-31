@@ -46,7 +46,7 @@
   // ---------------------------------------------------------------------
 
   const CFG = JSON.parse($('pycalc-config').textContent);
-  const ASSETS = JSON.parse($('pycalc-assets').textContent);
+  let ASSETS_TEXT = $('pycalc-assets').textContent;
   const MESSAGES = JSON.parse($('pycalc-i18n').textContent);
   window.__pycalcVersion = {
     app: CFG.appVersion,
@@ -216,6 +216,8 @@
     objectUrls: [],
     activeOutput: null,
     completions: [],
+    variables: [],
+    functions: [],
     attributeCache: new Map(),
     historyNav: { index: null, draft: '' },
     redoStack: [],
@@ -253,7 +255,6 @@
   window.__pycalcPerf = perf;
   // ------------------------------------------------------
   let editor = null;
-  let pyodide = null;
   let py = null;
   let mobileKeyboard = null;
 
@@ -359,10 +360,8 @@
   }
 
   // ---------------------------------------------------------------------
-  // Inlined assets and fetch shim
+  // Images / binary helpers
   // ---------------------------------------------------------------------
-
-  const decoded = new Map();
 
   function b64ToBytes(data) {
     if (typeof Uint8Array.fromBase64 === 'function') return Uint8Array.fromBase64(data);
@@ -372,74 +371,9 @@
     return out;
   }
 
-  async function decodeAsset(name) {
-    if (decoded.has(name)) return decoded.get(name);
-    const asset = ASSETS[name];
-    if (!asset) throw new Error(`missing inline asset: ${name}`);
-    let bytes = b64ToBytes(asset.data);
-    if (asset.enc === 'gzip') {
-      if (typeof DecompressionStream !== 'function') {
-        throw new Error('this browser does not support DecompressionStream');
-      }
-      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
-      bytes = new Uint8Array(await new Response(stream).arrayBuffer());
-    }
-    decoded.set(name, bytes);
-    return bytes;
-  }
-
-  const MIME = {
-    '.wasm': 'application/wasm',
-    '.zip': 'application/zip',
-    '.whl': 'application/zip',
-    '.json': 'application/json',
-    '.js': 'text/javascript',
-    '.mjs': 'text/javascript',
-  };
-
-  function normalizeUrl(input) {
-    if (typeof input === 'string') return input;
-    if (input instanceof URL) return input.href;
-    if (input && typeof input.url === 'string') return input.url;
-    return String(input);
-  }
-
-  function baseName(url) {
-    try {
-      return new URL(url, location.href).pathname.split('/').pop().split('?')[0];
-    } catch (_) {
-      return url.split('/').pop().split('?')[0];
-    }
-  }
-
-  function installFetchShim() {
-    window.fetch = async (input) => {
-      const url = normalizeUrl(input);
-      const name = baseName(url);
-      if (Object.prototype.hasOwnProperty.call(ASSETS, name)) {
-        const bytes = await decodeAsset(name);
-        const ext = name.slice(name.lastIndexOf('.'));
-        return new Response(bytes, {
-          status: 200,
-          headers: {
-            'Content-Type': MIME[ext] || 'application/octet-stream',
-            'Content-Length': String(bytes.length),
-          },
-        });
-      }
-      console.warn('[PyCalc] blocked external request:', url);
-      throw new Error(`external request blocked: ${url}`);
-    };
-  }
-
   // ---------------------------------------------------------------------
   // Runtime
   // ---------------------------------------------------------------------
-
-  const streamDecoders = {
-    stdout: new TextDecoder('utf-8'),
-    stderr: new TextDecoder('utf-8'),
-  };
 
   // 启动阶段先收集 Pyodide 输出，别把 [perf] 日志冲掉
   const bootLogs = [];
@@ -456,100 +390,153 @@
     }
   }
 
-  function flushStreams() {
-    for (const kind of ['stdout', 'stderr']) {
-      const rest = streamDecoders[kind].decode();
-      if (rest) dispatchStream(kind, rest);
+  // ---------------------------------------------------------------------
+  // Python runtime worker
+  // ---------------------------------------------------------------------
+
+  let runtimeWorker = null;
+  let workerSeq = 0;
+  const workerPending = new Map();
+
+  function workerCall(method, args = [], transfer = []) {
+    if (!runtimeWorker) return Promise.reject(new Error('Python runtime is not started'));
+    const id = ++workerSeq;
+    return new Promise((resolve, reject) => {
+      workerPending.set(id, { resolve, reject });
+      runtimeWorker.postMessage({ type: 'call', id, method, args }, transfer);
+    });
+  }
+
+  function makeRuntimeProxy() {
+    const call = (method) => (...args) => workerCall(method, args);
+    return {
+      run: call('run'),
+      figures: call('figures'),
+      selfTest: call('selfTest'),
+      reset: call('reset'),
+      replayImports: call('replayImports'),
+      namespaceInfo: call('namespaceInfo'),
+      setLibraries: call('setLibraries'),
+      isComplete: call('isComplete'),
+      listVars: call('listVars'),
+      listFuncs: call('listFuncs'),
+      setPlotTheme: call('setPlotTheme'),
+      listCompletions: call('listCompletions'),
+      attributeItems: call('attributeItems'),
+      snapshot: () => workerCall('snapshot'),
+      restore: (bytes) => workerCall('restore', [bytes], [bytes]),
+    };
+  }
+
+  function rejectWorkerPending(error) {
+    for (const entry of workerPending.values()) entry.reject(error);
+    workerPending.clear();
+  }
+
+  function startRuntimeWorker() {
+    const pyodideSource = $('pycalc-pyodide-js').textContent;
+    const workerSource = $('pycalc-runtime-worker').textContent;
+    const asmSource = CFG.runtimeMode === 'esm'
+      ? $('pycalc-asm-mjs').textContent
+      : $('pycalc-asm-js').textContent;
+    perf.mark('runtime:readSources');
+
+    // pyodide.js must run inside the worker.  For the classic runtime the asm
+    // script also has to be in the same worker global before loadPyodide().
+    //
+    // Pyodide 314 refuses classic workers only because it probes
+    // importScripts(); hiding that probe lets the worker use the same
+    // createPyodideModule path as the main thread.  This also keeps blob
+    // workers working from file://, where module workers are rejected.
+    const classicEsm = CFG.runtimeMode === 'esm' && location.protocol === 'file:';
+    const useModule = CFG.runtimeMode === 'esm' && !classicEsm;
+    const prelude = classicEsm
+      ? [
+        'try { Object.defineProperty(self, "importScripts", { value: undefined, configurable: true }); }',
+        'catch (_) {}',
+        '',
+      ].join('\n')
+      : '';
+    const source = CFG.runtimeMode === 'esm'
+      ? `${prelude}${pyodideSource}\n${workerSource}`
+      : `${prelude}${pyodideSource}\n${asmSource}\n${workerSource}`;
+    const blobUrl = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+    perf.mark('runtime:createWorkerBlob');
+    const worker = new Worker(blobUrl, { type: useModule ? 'module' : 'classic' });
+    runtimeWorker = worker;
+    perf.mark('runtime:workerCreated');
+
+    const ready = new Promise((resolve, reject) => {
+      worker.onmessage = (event) => {
+        const message = event.data || {};
+        if (message.type === 'status') {
+          setRuntimeStatus(message.key, message.params);
+          return;
+        }
+        if (message.type === 'stream') {
+          dispatchStream(message.kind, message.text);
+          return;
+        }
+        if (message.type === 'ready') {
+          perf.mark('runtime:workerReady');
+          URL.revokeObjectURL(blobUrl);
+          resolve();
+          return;
+        }
+        if (message.type === 'error') {
+          const error = new Error(message.error || 'Python worker failed');
+          URL.revokeObjectURL(blobUrl);
+          setRuntimeStatus(null);
+          reject(error);
+          rejectWorkerPending(error);
+          return;
+        }
+        if (message.type === 'result') {
+          const pending = workerPending.get(message.id);
+          if (!pending) return;
+          workerPending.delete(message.id);
+          if (message.ok) pending.resolve(message.value);
+          else pending.reject(new Error(message.error || 'Python call failed'));
+        }
+      };
+      worker.onerror = (event) => {
+        const error = new Error(event.message || 'Python worker failed to start');
+        URL.revokeObjectURL(blobUrl);
+        setRuntimeStatus(null);
+        reject(error);
+        rejectWorkerPending(error);
+      };
+    });
+
+    worker.postMessage({
+      type: 'init',
+      config: CFG,
+      assetsText: ASSETS_TEXT,
+      glue: PY_GLUE_SOURCE,
+      asmSource,
+      runtimeMode: CFG.runtimeMode,
+    });
+    // The worker owns the runtime payload now; release the large inline
+    // script texts so the main thread does not keep a second copy in memory.
+    ASSETS_TEXT = null;
+    for (const id of [
+      'pycalc-assets', 'pycalc-pyodide-js', 'pycalc-runtime-worker',
+      'pycalc-asm-mjs', 'pycalc-asm-js',
+    ]) {
+      const node = $(id);
+      if (node) node.remove();
     }
+    return ready;
   }
 
   async function loadRuntime() {
     setStage('overlay.runtime', { version: CFG.pyodideVersion, python: CFG.pythonVersion });
     setRuntimeStatus('runtime.loading');
     await new Promise((resolve) => setTimeout(resolve, 0));
-    perf.mark('runtime:yield'); 
-
-    let createPyodideModule;
-    if (CFG.runtimeMode === 'esm') {
-      const asmSource = $('pycalc-asm-mjs').textContent;
-      perf.mark('runtime:readAsmSource'); 
-      const blobUrl = URL.createObjectURL(new Blob([asmSource], { type: 'text/javascript' }));
-      perf.mark('runtime:createBlob');  
-      try {
-        const mod = await import(blobUrl);
-        createPyodideModule = mod.default;
-      } finally {
-        URL.revokeObjectURL(blobUrl);
-      }
-      perf.mark('runtime:importAsmMjs'); 
-    }
-
-    setStage('overlay.packages', { libs: (CFG.libs || []).join(', ') || 'cloudpickle' });
-    setRuntimeStatus('runtime.packages');
-    perf.mark('runtime:packagesStage');
-    const options = {
-      indexURL: 'https://pycalc.local/',
-      packages: CFG.packages,
-      stdout: (text) => dispatchStream('stdout', text),
-      stderr: (text) => dispatchStream('stderr', text),
-    };
-    if (createPyodideModule) options.createPyodideModule = createPyodideModule;
-    pyodide = await loadPyodide(options);
-    pyodide.setStdout({
-      write: (buffer) => {
-        dispatchStream('stdout', streamDecoders.stdout.decode(buffer, { stream: true }));
-        return buffer.byteLength;
-      },
-    });
-    pyodide.setStderr({
-      write: (buffer) => {
-        dispatchStream('stderr', streamDecoders.stderr.decode(buffer, { stream: true }));
-        return buffer.byteLength;
-      },
-    });
-    perf.mark('runtime:setStreams');
-
-    setStage('overlay.init');
-    setRuntimeStatus('runtime.init');
-    pyodide.globals.set('_pycalc_glue_source', PY_GLUE_SOURCE);
-    pyodide.runPython(`
-import types as _pycalc_types
-import __main__ as _pycalc_main
-_pycalc_mod = _pycalc_types.ModuleType('_pycalc_glue')
-exec(_pycalc_glue_source, _pycalc_mod.__dict__)
-for _pycalc_name in (
-    '_pycalc_run', '_pycalc_figures', '_pycalc_self_test',
-    '_pycalc_reset', '_pycalc_snapshot_to_file', '_pycalc_restore_from_file',
-    '_pycalc_replay_imports', '_pycalc_namespace_info',
-    '_pycalc_set_libraries', '_pycalc_is_complete',
-    '_pycalc_list_vars', '_pycalc_list_funcs', '_pycalc_set_plot_theme',
-    '_pycalc_completion_items', '_pycalc_attribute_items',
-):
-    setattr(_pycalc_main, _pycalc_name, getattr(_pycalc_mod, _pycalc_name))
-del _pycalc_name
-del _pycalc_mod
-del _pycalc_types
-del _pycalc_main
-del _pycalc_glue_source
-`);
-    py = {
-      run: pyodide.globals.get('_pycalc_run'),
-      figures: pyodide.globals.get('_pycalc_figures'),
-      selfTest: pyodide.globals.get('_pycalc_self_test'),
-      reset: pyodide.globals.get('_pycalc_reset'),
-      snapshot: pyodide.globals.get('_pycalc_snapshot_to_file'),
-      restore: pyodide.globals.get('_pycalc_restore_from_file'),
-      replayImports: pyodide.globals.get('_pycalc_replay_imports'),
-      namespaceInfo: pyodide.globals.get('_pycalc_namespace_info'),
-      setLibraries: pyodide.globals.get('_pycalc_set_libraries'),
-      isComplete: pyodide.globals.get('_pycalc_is_complete'),
-      listVars: pyodide.globals.get('_pycalc_list_vars'),
-      listFuncs: pyodide.globals.get('_pycalc_list_funcs'),
-      setPlotTheme: pyodide.globals.get('_pycalc_set_plot_theme'),
-      listCompletions: pyodide.globals.get('_pycalc_completion_items'),
-      attributeItems: pyodide.globals.get('_pycalc_attribute_items'),
-    };
-    perf.mark('runtime:initGlue');   
+    perf.mark('runtime:yield');
+    await startRuntimeWorker();
+    py = makeRuntimeProxy();
+    perf.mark('runtime:initGlue');
   }
 
   // ---------------------------------------------------------------------
@@ -946,13 +933,13 @@ del _pycalc_glue_source
     if (!state.storage || !state.activeId) return;
     const index = buildIndex();
     const data = buildData();
-    if (snapshot && py) {
+    if (snapshot && py && state.ready) {
       try {
         setStatus('status.saving');
-        const info = JSON.parse(py.snapshot('/tmp/pycalc-snapshot.bin'));
+        const snap = await py.snapshot();
+        const info = snap.info;
         if (info.ok) {
-          const bytes = pyodide.FS.readFile('/tmp/pycalc-snapshot.bin');
-          data.namespace = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+          data.namespace = snap.bytes;
           data.namespaceMeta = {
             engine: info.engine,
             size: info.size,
@@ -1165,9 +1152,9 @@ del _pycalc_glue_source
     updateBusyUi();
     try {
       if (py) {
-        py.reset();
-        applyLibraries(false);
-        py.setPlotTheme(state.ui.theme);
+        await py.reset();
+        await applyLibraries(false);
+        await py.setPlotTheme(state.ui.theme);
       }
       state.history = [];
       state.redoStack = [];
@@ -1180,7 +1167,7 @@ del _pycalc_glue_source
       renderConsole();
       resetEditorForSession('');
       updateHeader();
-      refreshInspector();
+      await refreshInspector();
       updateHistoryButtons();
       setStatus('status.ready');
       toast('session.cleared');
@@ -1210,10 +1197,10 @@ del _pycalc_glue_source
     perf.mark('restore:yield');
     try {
       window.__pycalcBootStage = 'restore:reset';
-      py.reset();
+      await py.reset();
       perf.mark('restore:reset');
       window.__pycalcBootStage = 'restore:libraries';
-      const libResult = JSON.parse(py.setLibraries(
+      const libResult = JSON.parse(await py.setLibraries(
         JSON.stringify(state.libraries), JSON.stringify(libraryAliasMap())
       ));
       perf.mark('restore:setLibraries');
@@ -1225,7 +1212,7 @@ del _pycalc_glue_source
       }
       window.__pycalcBootStage = 'restore:imports';
       const codes = state.history.map((entry) => entry.code).filter(Boolean);
-      const replay = JSON.parse(py.replayImports(JSON.stringify(codes)));
+      const replay = JSON.parse(await py.replayImports(JSON.stringify(codes)));
       perf.mark('restore:replayImports');
       if (replay.failed && replay.failed.length) {
         banner('banner.importReplay', { names: replay.failed.slice(0, 3).join('; ') });
@@ -1243,9 +1230,13 @@ del _pycalc_glue_source
       }
       window.__pycalcBootStage = 'restore:snapshot';
       if (state.namespace) {
-        const bytes = new Uint8Array(state.namespace);
-        pyodide.FS.writeFile('/tmp/pycalc-restore.bin', bytes);
-        const info = JSON.parse(py.restore('/tmp/pycalc-restore.bin'));
+        const source = state.namespace instanceof ArrayBuffer
+          ? state.namespace
+          : state.namespace.buffer;
+        // The structured-clone transfer detaches the buffer on this side;
+        // keep state.namespace usable for later snapshots/saves.
+        const bytes = source.slice(0);
+        const info = JSON.parse(await py.restore(bytes));
         perf.mark('restore:snapshot');
         if (!info.ok) {
           banner('banner.restoreFailed', { error: info.error || I18n.t('error.unknown') }, 'warn', true);
@@ -1261,21 +1252,21 @@ del _pycalc_glue_source
       banner('banner.restoreFailed', { error: err.message || err }, 'bad', true);
     }
     window.__pycalcBootStage = 'restore:inspector';
-    refreshInspector();
+    await refreshInspector();
     // Importing pyplot (inside reset/setLibraries) can reset rcParams to the
     // default style; re-apply the UI plot theme after the namespace is ready.
     if (py) {
-      try { py.setPlotTheme(state.ui.theme); } catch (err) { console.warn('plot theme failed', err); }
+      try { await py.setPlotTheme(state.ui.theme); } catch (err) { console.warn('plot theme failed', err); }
     }
     perf.mark('restore:inspector');
     setRuntimeStatus(null);
     window.__pycalcBootStage = 'restore:done';
   }
 
-  function applyLibraries(announce = true) {
-    if (!py) return [];
+  async function applyLibraries(announce = true) {
+    if (!py || !state.ready) return [];
     try {
-      const result = JSON.parse(py.setLibraries(
+      const result = JSON.parse(await py.setLibraries(
         JSON.stringify(state.libraries), JSON.stringify(libraryAliasMap())
       ));
       const conflicts = result.conflicts || [];
@@ -1301,23 +1292,23 @@ del _pycalc_glue_source
       const input = label.querySelector('input');
       label.classList.toggle('checked', Boolean(input && input.checked));
     }
-    applyLibraries(true);
+    await applyLibraries(true);
     if (py) {
-      try { py.setPlotTheme(state.ui.theme); } catch (err) { console.warn('plot theme failed', err); }
+      try { await py.setPlotTheme(state.ui.theme); } catch (err) { console.warn('plot theme failed', err); }
     }
-    refreshInspector();
+    await refreshInspector();
     if (mobileKeyboard && mobileKeyboard.refresh) mobileKeyboard.refresh();
     queueSave({ snapshot: false });
   }
 
-  function refreshCompletions() {
+  async function refreshCompletions() {
     state.attributeCache.clear();
     if (!py || !state.ready) {
       state.completions = [];
       return;
     }
     try {
-      const rows = JSON.parse(py.listCompletions());
+      const rows = JSON.parse(await py.listCompletions());
       state.completions = Array.isArray(rows) ? rows : [];
     } catch (err) {
       console.warn('list completions failed', err);
@@ -1348,36 +1339,48 @@ del _pycalc_glue_source
     return items;
   }
 
-  function getAttributeCompletions(expr, code = '') {
+  async function getAttributeCompletions(expr, code = '') {
     const key = String(expr || '');
     if (state.attributeCache.has(key)) return state.attributeCache.get(key);
     const empty = { expr: key, type: null, source: 'live', items: [] };
     if (!py || !state.ready || !key) return empty;
-    try {
-      const data = JSON.parse(py.attributeItems(key, String(code || '')));
-      const value = {
-        expr: data.expr || key,
-        type: data.type || null,
-        source: data.source || 'live',
-        items: Array.isArray(data.items) ? data.items : [],
-      };
-      // Live objects are stable until the next execution; static inference
-      // depends on the editor text, so it is not cached across edits.
-      if (value.source === 'live') state.attributeCache.set(key, value);
-      return value;
-    } catch (err) {
-      console.warn('attribute completion failed', err);
-      return empty;
+    const promise = py.attributeItems(key, String(code || ''))
+      .then((raw) => {
+        const data = JSON.parse(raw);
+        const value = {
+          expr: data.expr || key,
+          type: data.type || null,
+          source: data.source || 'live',
+          items: Array.isArray(data.items) ? data.items : [],
+        };
+        // Live objects are stable until the next execution; static inference
+        // depends on the editor text, so it is not cached across edits.
+        if (value.source === 'live') state.attributeCache.set(key, value);
+        return value;
+      })
+      .catch((err) => {
+        console.warn('attribute completion failed', err);
+        return empty;
+      });
+    if (!state.attributeCache.has(key)) {
+      // Coalesce concurrent completion requests for the same expression.
+      state.attributeCache.set(key, promise);
+      promise.then((value) => {
+        if (value.source !== 'live' && state.attributeCache.get(key) === promise) {
+          state.attributeCache.delete(key);
+        }
+      });
     }
+    return promise;
   }
 
-  function signatureFor(name) {
+  async function signatureFor(name) {
     if (!name) return null;
     if (name.includes('.')) {
       const index = name.lastIndexOf('.');
       const expr = name.slice(0, index);
       const attr = name.slice(index + 1);
-      const data = getAttributeCompletions(expr);
+      const data = await getAttributeCompletions(expr);
       const item = data.items.find((row) => row.label === attr);
       if (item && (item.type === 'function' || item.type === 'method')) {
         return item.detail || '(...)';
@@ -1391,7 +1394,7 @@ del _pycalc_glue_source
     return null;
   }
 
-  function refreshInspector() {
+  async function refreshInspector() {
     const varsBody = $('vars-body');
     const funcsBody = $('funcs-body');
     const varsCard = varsBody.closest('.side-card');
@@ -1400,13 +1403,16 @@ del _pycalc_glue_source
     funcsBody.innerHTML = '';
     if (!py || !state.ready) {
       state.completions = [];
+      state.variables = [];
+      state.functions = [];
       varsCard.classList.add('empty');
       funcsCard.classList.add('empty');
       return;
     }
-    refreshCompletions();
+    await refreshCompletions();
     try {
-      const vars = JSON.parse(py.listVars());
+      const vars = JSON.parse(await py.listVars());
+      state.variables = Array.isArray(vars) ? vars : [];
       for (const row of vars) {
         const tr = document.createElement('tr');
         tr.appendChild(el('td', '', row.name));
@@ -1421,10 +1427,12 @@ del _pycalc_glue_source
       varsCard.classList.toggle('empty', vars.length === 0);
     } catch (err) {
       console.warn('list variables failed', err);
+      state.variables = [];
       varsCard.classList.add('empty');
     }
     try {
-      const funcs = JSON.parse(py.listFuncs());
+      const funcs = JSON.parse(await py.listFuncs());
+      state.functions = Array.isArray(funcs) ? funcs : [];
       for (const row of funcs) {
         const tr = document.createElement('tr');
         tr.appendChild(el('td', '', row.name));
@@ -1436,6 +1444,7 @@ del _pycalc_glue_source
       funcsCard.classList.toggle('empty', funcs.length === 0);
     } catch (err) {
       console.warn('list functions failed', err);
+      state.functions = [];
       funcsCard.classList.add('empty');
     }
   }
@@ -1736,19 +1745,17 @@ del _pycalc_glue_source
     return true;
   }
 
-  function tryRunOnEnter() {
+  async function tryRunOnEnter() {
     if (state.ui.runKey !== 'enter' || !state.ready || state.busy || !py) return false;
     const code = editor.getValue();
     if (!code.trim()) return false;
     try {
-      const info = JSON.parse(py.isComplete(code));
-      if (!info.complete) return false;
+      const info = JSON.parse(await py.isComplete(code));
+      return Boolean(info.complete);
     } catch (err) {
       console.warn('completeness check failed', err);
       return false;
     }
-    runCode();
-    return true;
   }
 
   async function runCode() {
@@ -1789,14 +1796,14 @@ del _pycalc_glue_source
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     try {
-      const result = JSON.parse(py.run(code));
+      const result = JSON.parse(await py.run(code));
       entry.status = result.ok ? 'ok' : 'error';
       entry.result = result.ok ? result.result : null;
       entry.resultMathML = result.ok ? (result.resultMathML || null) : null;
       entry.resultLatex = result.ok ? (result.resultLatex || null) : null;
       entry.error = result.ok ? null : result.error;
       try {
-        const images = JSON.parse(py.figures());
+        const images = JSON.parse(await py.figures());
         entry.images = (images || []).map((data) => ({
           mime: 'image/png',
           blob: new Blob([b64ToBytes(data)], { type: 'image/png' }),
@@ -1808,12 +1815,11 @@ del _pycalc_glue_source
       entry.status = 'error';
       entry.error = String((err && err.stack) || err);
     } finally {
-      flushStreams();
       state.activeOutput = null;
       live.finish(entry);
       state.busy = false;
       state.running = false;
-      refreshInspector();
+      await refreshInspector();
       updateBusyUi();
       scheduleSave({ snapshot: true, delay: 250 });
       if (editor) editor.focus();
@@ -1860,7 +1866,9 @@ del _pycalc_glue_source
     $('theme-toggle').title = I18n.t('theme.toggleTitle');
     if (editor && typeof editor.setTheme === 'function') editor.setTheme(state.ui.theme);
     if (py) {
-      try { py.setPlotTheme(state.ui.theme); } catch (err) { console.warn('plot theme failed', err); }
+      Promise.resolve(py.setPlotTheme(state.ui.theme)).catch((err) => {
+        console.warn('plot theme failed', err);
+      });
     }
     if (persist) saveUiMeta();
   }
@@ -1961,12 +1969,8 @@ del _pycalc_glue_source
       t: (key) => I18n.t(key),
       insert: (text) => editor.insertAtCursor(text, { focus: false }),
       run: () => runCode(),
-      getVariables: () => {
-        try { return py ? JSON.parse(py.listVars()) : []; } catch (_) { return []; }
-      },
-      getFunctions: () => {
-        try { return py ? JSON.parse(py.listFuncs()) : []; } catch (_) { return []; }
-      },
+      getVariables: () => state.variables,
+      getFunctions: () => state.functions,
       getLibraries: () => AVAILABLE_LIBS,
       getSelectedLibraries: () => {
         const byId = new Map(AVAILABLE_LIBS.map((lib) => [lib.id, lib]));
@@ -2192,7 +2196,6 @@ del _pycalc_glue_source
     bindUi();
     I18n.setLanguage(detectLanguage());
     setOverlay('overlay.startTitle', 'overlay.startDetail');
-    installFetchShim();
     perf.mark('boot:start'); 
 
     setOverlay('overlay.startTitle', 'overlay.db');
@@ -2255,7 +2258,7 @@ del _pycalc_glue_source
     perf.mark('boot:loadRuntime'); 
 
     try {
-      const test = JSON.parse(py.selfTest());
+      const test = JSON.parse(await py.selfTest());
       setEngine(test.engine);
       if (test.engine === 'json') banner('banner.cloudpickleUnavailable', {}, 'warn', true);
     } catch (err) {
@@ -2270,8 +2273,8 @@ del _pycalc_glue_source
     window.__pycalcBootStage = 'boot:ready';
 
     state.ready = true;
+    await refreshInspector();
     window.__pycalcReady = true;
-    refreshInspector();
     updateBusyUi();
     hideOverlay();
     setStatus('status.ready');
@@ -2336,23 +2339,27 @@ del _pycalc_glue_source
     selectLibraries: async (ids) => {
       state.libraries = normalizeLibraryList(ids);
       renderLibraryBar();
-      applyLibraries(true);
-      refreshInspector();
+      await applyLibraries(true);
+      await refreshInspector();
       if (mobileKeyboard && mobileKeyboard.refresh) mobileKeyboard.refresh();
       await queueSave({ snapshot: false });
       return [...state.libraries];
     },
-    isComplete: (code) => {
-      if (!py) return false;
-      try { return Boolean(JSON.parse(py.isComplete(code)).complete); } catch (_) { return false; }
+    isComplete: async (code) => {
+      if (!py || !state.ready) return false;
+      try { return Boolean(JSON.parse(await py.isComplete(code)).complete); } catch (_) { return false; }
     },
     getEditorValue: () => (editor ? editor.getValue() : ''),
     setEditorText: (text) => setEditorText(text, true),
     historyNav: (delta) => navigateHistory(delta),
-    tryRunOnEnter: () => tryRunOnEnter(),
+    tryRunOnEnter: async () => {
+      const complete = await tryRunOnEnter();
+      if (complete) await runCode();
+      return complete;
+    },
     insertAtCursor: (text) => editor.insertAtCursor(text),
-    variables: () => (py ? JSON.parse(py.listVars()) : []),
-    functions: () => (py ? JSON.parse(py.listFuncs()) : []),
+    variables: async () => (py && state.ready ? JSON.parse(await py.listVars()) : []),
+    functions: async () => (py && state.ready ? JSON.parse(await py.listFuncs()) : []),
     completions: () => getCompletionOptions(),
     attributes: (expr) => getAttributeCompletions(expr),
     signature: (name) => signatureFor(name),

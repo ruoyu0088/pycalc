@@ -605,6 +605,35 @@ def test_minimal_314() -> None:
     log("  PASS minimal 314")
 
 
+def test_worker_responsive() -> None:
+    log("[11] worker UI responsiveness")
+    html = build_case("worker-ui.html", ["numpy", "sympy", "matplotlib"], "314.0.7")
+    profile = OUT / "profiles" / "worker-ui"
+    shutil.rmtree(profile, ignore_errors=True)
+    with Browser(file_url(html), profile=profile, timeout=180) as browser:
+        hidden = False
+        ready = True
+        deadline = time.time() + 20
+        while time.time() < deadline:
+            hidden = browser.eval(
+                "document.getElementById('overlay').classList.contains('hidden')"
+            )
+            ready = browser.eval("window.__pycalcReady === true")
+            if hidden and not ready:
+                break
+            time.sleep(0.02)
+        assert hidden is True
+        assert ready is False
+        browser.eval("document.querySelector('.cm-content').focus()")
+        started = time.time()
+        browser.call("Input.insertText", {"text": "1+1"})
+        assert browser.eval("window.__pycalc.getEditorValue()") == "1+1"
+        assert time.time() - started < 1.0
+        browser.wait_ready(timeout=180)
+        assert browser.eval("window.__pycalc.getEditorValue()") == "1+1"
+    log("  PASS worker UI responsiveness")
+
+
 def test_full_314() -> None:
     log("[2] full build / 314.0.7")
     html = build_case("full314.html", ["numpy", "sympy", "matplotlib"], "314.0.7")
@@ -896,7 +925,7 @@ def test_new_features() -> None:
         browser.eval("window.__pycalc.setEditorText('')")
         browser.eval("document.querySelector('.cm-content').focus()")
         browser.call("Input.insertText", {"text": "arr.re"})
-        time.sleep(0.4)
+        time.sleep(0.8)
         popup = browser.eval("document.querySelector('.cm-tooltip-autocomplete')?.textContent || ''")
         assert "reshape" in popup, popup
         assert browser.eval("document.querySelector('#type-hint')?.textContent") == "arr : numpy.ndarray"
@@ -905,7 +934,7 @@ def test_new_features() -> None:
         browser.eval("window.__pycalc.setEditorText('pending = np.linspace(1, 2)\\npending')")
         browser.eval("document.querySelector('.cm-content').focus()")
         browser.call("Input.insertText", {"text": ".re"})
-        time.sleep(0.4)
+        time.sleep(0.8)
         popup = browser.eval("document.querySelector('.cm-tooltip-autocomplete')?.textContent || ''")
         assert "reshape" in popup, popup
         assert browser.eval("document.querySelector('#type-hint')?.textContent") == "pending : numpy.ndarray"
@@ -914,13 +943,13 @@ def test_new_features() -> None:
         browser.eval("window.__pycalc.setEditorText('np.lin')")
         browser.eval("document.querySelector('.cm-content').focus()")
         press(browser, " ", "Space", 32, modifiers=2)
-        time.sleep(0.5)
+        time.sleep(1.2)
         popup = browser.eval("document.querySelector('.cm-tooltip-autocomplete')?.textContent || ''")
         assert "linspace" in popup, popup
         assert browser.eval("document.querySelector('#type-hint')?.textContent") == "np : module numpy"
 
         browser.eval("window.__pycalc.setEditorText('np.linspace(')")
-        time.sleep(0.3)
+        time.sleep(0.6)
         sig = browser.eval("document.querySelector('.signature-tip')?.textContent || ''")
         assert "start, stop" in sig, sig
 
@@ -1004,10 +1033,14 @@ def test_new_features() -> None:
         browser.eval("window.__pycalc.setEditorText('def pending():')")
         browser.eval("document.querySelector('.cm-content').focus()")
         press(browser, "Enter", "Enter", 13)
+        time.sleep(0.2)
         assert "\n" in browser.eval("window.__pycalc.getEditorValue()")
         browser.eval("window.__pycalc.setEditorText('2 + 3')")
         browser.eval("document.querySelector('.cm-content').focus()")
         press(browser, "Enter", "Enter", 13)
+        deadline = time.time() + 5
+        while time.time() < deadline and browser.eval("window.__pycalc.getEditorValue()"):
+            time.sleep(0.05)
         wait_idle(browser)
         assert browser.eval("window.__pycalc.getEditorValue()") == ""
         assert browser.eval("window.__pycalc.history()")[-1]["code"] == "2 + 3"
@@ -1141,6 +1174,7 @@ def main() -> int:
         test_minimal_314()
         test_full_314()
         test_pwa()
+        test_worker_responsive()
         test_mobile_keyboard()
         test_ios_keyboard()
         test_full_0278()

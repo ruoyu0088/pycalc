@@ -53,12 +53,14 @@ def render_page(
     keyboard_css = _read_text(ASSETS_DIR / "keyboard.css", "keyboard.css")
     app_js = _read_text(ASSETS_DIR / "app.js", "app.js")
     keyboard_js = _read_text(ASSETS_DIR / "keyboard.js", "keyboard.js")
+    worker_js = _read_text(ASSETS_DIR / "runtime_worker.js", "runtime_worker.js")
     glue = _read_text(ASSETS_DIR / "python_glue.py", "python_glue.py")
     editor_js = _editor_bundle()
 
     _check_inline_script(pyodide_js, "pyodide.js")
     _check_inline_script(app_js, "app.js")
     _check_inline_script(keyboard_js, "keyboard.js")
+    _check_inline_script(worker_js, "runtime_worker.js")
     _check_inline_script(glue, "python_glue.py")
     _check_inline_script(asm_source, f"pyodide asm ({runtime_mode})")
 
@@ -69,7 +71,11 @@ def render_page(
             + "</script>"
         )
     else:
-        asm_block = "<script>" + asm_source + "</script>"
+        asm_block = (
+            '<script type="text/plain" id="pycalc-asm-js">'
+            + asm_source
+            + "</script>"
+        )
 
     config_json = json.dumps(config, ensure_ascii=False, separators=(",", ":"))
     assets_json = json.dumps(assets, ensure_ascii=False, separators=(",", ":"))
@@ -91,6 +97,7 @@ def render_page(
         "__PYCALC_GLUE__": glue,
         "__PYCALC_ASM__": asm_block,
         "__PYCALC_PYODIDE_JS__": pyodide_js,
+        "__PYCALC_WORKER_JS__": worker_js,
         "__PYCALC_EDITOR_JS__": editor_js,
         "__PYCALC_APP_JS__": app_js,
     }

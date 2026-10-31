@@ -142,7 +142,7 @@ dist/
 └─ icon-512.png
 ```
 
-`pycalc.html` 本身仍然是一个完全自包含的单文件；PWA 文件只是额外的兄弟文件，用于安装和离线缓存。Service Worker 只缓存入口 HTML、manifest 和图标——Pyodide/NumPy/Matplotlib 等运行时都在 HTML 内部，不需要额外缓存。
+`pycalc.html` 本身仍然是一个完全自包含的单文件；PWA 文件只是额外的兄弟文件，用于安装和离线缓存。Service Worker 只缓存入口 HTML、manifest 和图标——Pyodide/NumPy/Matplotlib 等运行时以及内联 Worker 都在 HTML 内部，不需要额外缓存。
 
 `manifest.json` 使用亮色启动背景 `#f6f7f9` 和深色 `theme_color: #20252e`：manifest 是静态的，不能跟随系统主题；亮色背景匹配默认亮色界面，深色主题色匹配顶栏/状态栏。若要深色启动画面，可把两者都改为 `#0d1117`。
 
@@ -202,7 +202,7 @@ https://ruoyu0088.github.io/pycalc/
 - 属性补全优先使用实时命名空间；尚未运行的赋值会对常见 numpy/sympy/matplotlib 构造器和类型注解做静态推断，其他复杂表达式仍建议先运行再补全。
 - **运行键可选**：`Ctrl/Cmd+Enter` 或 `Enter`。选择 `Enter` 时，只有 Python 认为代码“完整”才运行（`def`/`if`/括号未闭合、语法错误等都保持换行）；`Shift+Enter` 始终换行；输入法组合输入时不会误触发。
 - **触摸设备精简**：`pointer: coarse` 且虚拟键盘成功创建后，隐藏运行键选择、运行按钮和底部提示栏；运行入口移到键盘的 `=` 键。桌面模式完全不变。
-- **启动顺序**：编辑器和历史先显示，顶栏临时显示 `加载 Python… / 安装扩展库… / 初始化… / 恢复会话…`；runtime 就绪前运行、会话切换和扩展库勾选禁用。Matplotlib 只在勾选 `plt` 或代码真正 `import` 时加载，普通计算不会再触发 `matplotlib.pyplot`。
+- **启动顺序**：编辑器和历史先显示，顶栏临时显示 `加载 Python… / 安装扩展库… / 初始化… / 恢复会话…`；runtime 就绪前运行、会话切换和扩展库勾选禁用。Python 在 Web Worker 中启动和运行，加载期间主线程仍可输入、滚动历史；Matplotlib 只在勾选 `plt` 或代码真正 `import` 时加载，普通计算不会再触发 `matplotlib.pyplot`。
 - **明暗主题**：CSS、CodeMirror 语法高亮、Matplotlib 默认样式一起切换。首次跟随系统 `prefers-color-scheme`，之后记住选择。Matplotlib 只影响切换主题之后生成的图，历史 PNG 不重绘。
 - **扩展库 checkbox**：输入框上方列出**构建时库定义**里的每个别名，例如 `numpy (np)`、`matplotlib.pyplot (plt)`、`sympy (sp)`、`pandas (pd)`。勾选后自动导入，无需写 `import`。新会话默认只加载 Math，扩展库需要勾选；选择状态保存在会话里，切换会话时恢复。
 - **Math 始终加载**：`sin, cos, tan, sqrt, exp, log, log10, factorial, pi, e, inf, nan` 等名字可直接使用，像普通计算器一样；Math 不出现在扩展库列表中，也不会写入变量表。
@@ -313,7 +313,7 @@ pycalc_build/keyboard_layout.py -> LAYOUT
 - **多个窗口**：同一会话同时打开多个 PyCalc 窗口时是最后写入者胜出，没有合并。建议一次只开一个。
 - **Matplotlib**：图表会以 PNG 快照保存，figure 对象本身不参与会话序列化；恢复后看到的是图片，不是可继续操作的 figure。主题只影响之后创建的图。Matplotlib 自带字体不含中日文字形，图表里的中文/日文标题可能显示方框（界面文本不受影响）。
 - **Enter 运行键**：完整性判断使用 Python `codeop`；未闭合块或语法错误按“不完整”处理，Enter 只换行。要强制运行不完整代码请用 Ctrl/Cmd+Enter。
-- **单线程**：Pyodide 在页面主线程运行，长时间计算会冻结界面，且目前没有中断按钮；刷新页面即可终止。
+- **Web Worker**：Pyodide 在独立 Worker 中启动和执行，加载 Python 不阻塞编辑器和历史滚动；长时间计算会占满该 Worker，但主界面仍可滚动/输入，目前没有中断按钮，刷新页面即可终止。Worker 源码、Pyodide 和 wheel 仍全部内联在单文件 HTML 中。
 - **顶层 await**：用户单元格按同步 exec/eval 执行，不支持顶层 `await`。
 - **文件句柄、网络连接、生成器**等不可 pickle 的对象不会恢复；会列在“未能恢复”的提示里。
 
@@ -323,9 +323,11 @@ pycalc_build/keyboard_layout.py -> LAYOUT
 
 1. **构建层**：读取选定版本的 `pyodide-lock.json`，递归解析 `depends`，下载运行时与 wheel 到 `cache/`，校验 wheel SHA256。
 2. **内联**：wasm 用 gzip 压缩后 Base64；wheel 本身已是 ZIP/deflate，直接 Base64；`pyodide.asm.js/mjs` 与 `pyodide.js` 以文本内联。
-3. **启动**：安装 fetch 拦截器，按文件名从内存返回 wasm/stdlib/lock/wheel；调用 `loadPyodide({packages})`，由 Pyodide 原生加载器解析依赖并安装。
-   - 314.x：把 `pyodide.asm.mjs` 以 Blob URL 动态 import，把 default 作为 `createPyodideModule` 传入。
-   - 0.27/0.29.x：内联 `pyodide.asm.js`，它定义全局 `_createPyodideModule`，加载器自动跳过二次加载。
+3. **启动**：主线程只负责编辑器/历史/存储，读取内联资源后创建 Blob Worker；Worker 安装 fetch 拦截器，按文件名从内存返回 wasm/stdlib/lock/wheel，再调用 `loadPyodide({packages})`。
+   - HTTP/PWA：314.x 使用 module worker；`file://` 下 module worker 受限，改用 classic worker 并隐藏 `importScripts` 探测。
+   - 314.x 的 `pyodide.asm.mjs` 以 Blob URL 动态 import，把 default 作为 `createPyodideModule`。
+   - 0.27/0.29.x 使用 classic worker，`pyodide.asm.js` 定义全局 `_createPyodideModule`。
+   - Service Worker 明确跳过 `blob:`/`data:` 请求，避免拦截内联 Worker。
 4. **会话层**：IndexedDB 存 `meta / sessionIndex / sessionData`；Python 侧 glue 提供 `run / snapshot / restore / reset / replay imports / figure capture`。
 5. **前端**：CodeMirror 6（Python 高亮、行号、明暗主题、Enter/Ctrl+Enter 模式、历史上下键）、一个连续输出块、可点击的编号插入、扩展库 checkbox、变量/函数侧栏、流式 stdout/stderr。
 6. **手机键盘**：`keyboard_layout.py` 生成 `CFG.keyboard`；`keyboard.js` 只做渲染/动作分发；`app.js` 提供编辑器回调；全部内联进 HTML。
@@ -352,7 +354,8 @@ python tests\acceptance.py
 
 浏览器测试使用 CDP 直连 Chrome/Edge，不依赖 Playwright/Selenium；Python 侧只用到 `websocket-client`。测试会构建最小/完整 HTML，验证：
 
-- `file://` 下启动、执行、零外部网络请求；运行后清空输入框；
+- `file://` 下 Web Worker 启动、执行、零外部网络请求；运行后清空输入框；
+- HTTP/PWA 下 module worker 与 `file://` 下 classic worker 两条路径；
 - Math 默认可用（`sin(pi/2)`），无需 import；
 - numpy / sympy / matplotlib 与图片输出；
 - 三语切换、扩展库自动导入与按会话恢复、变量/函数表；
@@ -372,7 +375,7 @@ python tests\acceptance.py
 - 多个会话的新建/重命名/删除/切换、变量隔离、刷新恢复；
 - 复制 HTML、重建 HTML 后仍能读到会话；
 - 314.0.7 与 0.27.8 两种运行时结构、跨版本历史保留；
-- PWA 五文件生成、manifest/SW 版本、本地 HTTP 下 SW activated/缓存、断网刷新、`file://` 不注册 SW。
+- PWA 五文件生成、manifest/SW 版本、本地 HTTP 下 SW activated/缓存、断网刷新、`file://` 不注册 SW；SW 不拦截内联 Worker 的 `blob:` 请求。
 
 ---
 

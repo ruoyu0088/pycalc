@@ -45,6 +45,9 @@ self.addEventListener('fetch', (event) => {
   if (self.location.protocol === 'file:') return;
 
   const url = new URL(request.url);
+  // Let blob:/data: requests (including the inline Pyodide worker) through
+  // untouched; the Cache API cannot fetch or cache them.
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
   if (url.origin !== self.location.origin) return;
   // The browser manages sw.js updates itself; never serve it from Cache Storage.
   if (url.pathname.endsWith('/sw.js')) return;
