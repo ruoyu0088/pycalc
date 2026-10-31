@@ -49,6 +49,64 @@ class GuiLanguageTests(unittest.TestCase):
             except OSError:
                 pass
 
+    def test_library_editor_settings_roundtrip(self):
+        import gui
+
+        try:
+            root = tk.Tk()
+        except tk.TclError:
+            self.skipTest("no display available")
+        root.withdraw()
+        spec = "numpy, pandas\n\nnp = numpy\npd = pandas\n"
+        app = gui.PyCalcGui(root)
+        try:
+            app._set_library_text(spec)
+            app._save_settings()
+        finally:
+            root.destroy()
+
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            app = gui.PyCalcGui(root)
+            try:
+                self.assertEqual(app._library_text(), spec)
+            finally:
+                root.destroy()
+        finally:
+            try:
+                gui.SETTINGS_PATH.unlink()
+            except OSError:
+                pass
+
+    def test_old_libs_setting_is_migrated(self):
+        import json
+
+        import gui
+
+        gui.SETTINGS_PATH.write_text(
+            json.dumps({"libs": ["numpy", "sympy"]}),
+            encoding="utf-8",
+        )
+        try:
+            try:
+                root = tk.Tk()
+            except tk.TclError:
+                self.skipTest("no display available")
+            root.withdraw()
+            app = gui.PyCalcGui(root)
+            try:
+                text = app._library_text()
+                self.assertIn("np = numpy", text)
+                self.assertIn("sp = sympy", text)
+            finally:
+                root.destroy()
+        finally:
+            try:
+                gui.SETTINGS_PATH.unlink()
+            except OSError:
+                pass
+
 
 if __name__ == "__main__":
     unittest.main()

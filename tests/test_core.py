@@ -28,6 +28,7 @@ LOCK = {
             "sha256": "a" * 64,
             "depends": ["numpy", "pillow"],
             "package_type": "package",
+            "imports": ["matplotlib", "pylab"],
         },
         "numpy": {
             "version": "2.4.6",
@@ -35,6 +36,7 @@ LOCK = {
             "sha256": "b" * 64,
             "depends": [],
             "package_type": "package",
+            "imports": ["numpy"],
         },
         "pillow": {
             "version": "12.2.0",
@@ -42,6 +44,7 @@ LOCK = {
             "sha256": "c" * 64,
             "depends": [],
             "package_type": "package",
+            "imports": ["PIL"],
         },
     },
 }
@@ -116,10 +119,16 @@ class CoreTests(unittest.TestCase):
 
     def test_available_libraries(self):
         packages = resolve_closure(LOCK, ["matplotlib"])
-        ids = [lib["id"] for lib in available_libraries(packages)]
+        libraries = available_libraries(
+            packages,
+            {"np": "numpy", "plt": "matplotlib.pyplot"},
+        )
+        ids = [lib["id"] for lib in libraries]
         self.assertIn("numpy", ids)
-        self.assertIn("pyplot", ids)
+        self.assertIn("matplotlib.pyplot", ids)
         self.assertNotIn("sympy", ids)
+        self.assertEqual(libraries[1]["package"], "matplotlib")
+        self.assertEqual(libraries[1]["alias"], "plt")
 
 
 if __name__ == "__main__":

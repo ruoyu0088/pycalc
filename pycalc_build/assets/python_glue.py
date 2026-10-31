@@ -8,6 +8,7 @@ messages are English; translated UI strings live in i18n.py and app.js.
 import ast
 import builtins
 import codeop
+import importlib
 import inspect
 import io
 import json
@@ -46,8 +47,6 @@ _PYCALC_MATH_NAMES = (
     "pow", "factorial", "floor", "ceil", "trunc", "fabs", "degrees",
     "radians", "hypot", "gcd", "lcm", "pi", "e", "tau", "inf", "nan",
 )
-
-_PYCALC_ALLOWED_LIBRARIES = {"numpy", "pyplot", "sympy"}
 
 _pycalc_engine = None
 _pycalc_auto = {}
@@ -189,32 +188,27 @@ def _pycalc_apply_math(conflicts):
         _pycalc_bind(name, getattr(math, name), conflicts)
 
 
-def _pycalc_apply_numpy(conflicts):
-    import numpy
+def _pycalc_apply_module(module, alias, conflicts, errors):
+    try:
+        if module == "matplotlib.pyplot" or module.startswith("matplotlib."):
+            import matplotlib
 
-    _pycalc_bind("np", numpy, conflicts)
-
-
-def _pycalc_apply_pyplot(conflicts):
-    import matplotlib
-
-    matplotlib.use("Agg", force=False)
-    import matplotlib.pyplot as plt
-
-    _pycalc_bind("plt", plt, conflicts)
+            matplotlib.use("Agg", force=False)
+        value = importlib.import_module(module)
+    except Exception as exc:
+        errors.append(f"{module}: {type(exc).__name__}: {exc}")
+        return
+    _pycalc_bind(alias, value, conflicts)
 
 
-def _pycalc_apply_sympy(conflicts):
-    import sympy
-
-    _pycalc_bind("sp", sympy, conflicts)
-
-
-def _pycalc_set_libraries(ids_json):
+def _pycalc_set_libraries(ids_json, aliases_json="{}"):
     """Apply Math plus the selected extension libraries.
 
-    Returns JSON with ``conflicts`` (names already owned by the user) so the
-    UI can warn instead of silently overwriting user variables.
+    ``ids_json`` is a list of module paths (e.g. ``numpy``,
+    ``matplotlib.pyplot``, ``pandas``); ``aliases_json`` maps each module to
+    the alias it should be bound to (e.g. ``{"numpy": "np"}``).
+    Returns conflicts (names already owned by the user) so the UI can warn
+    instead of silently overwriting user variables.
     """
 
     try:
@@ -223,16 +217,26 @@ def _pycalc_set_libraries(ids_json):
         selected = []
     if not isinstance(selected, list):
         selected = []
-    selected = [str(item) for item in selected if str(item) in _PYCALC_ALLOWED_LIBRARIES]
+    selected = [str(item) for item in selected]
+
+    try:
+        alias_map = json.loads(aliases_json or "{}")
+    except Exception:
+        alias_map = {}
+    if not isinstance(alias_map, dict):
+        alias_map = {}
+    alias_map = {
+        str(module): str(alias)
+        for module, alias in alias_map.items()
+        if str(alias).isidentifier()
+    }
 
     globals_dict = _pycalc_user_globals()
     desired = set(_PYCALC_MATH_NAMES) | {"math"}
-    if "numpy" in selected:
-        desired.add("np")
-    if "pyplot" in selected:
-        desired.add("plt")
-    if "sympy" in selected:
-        desired.add("sp")
+    for module in selected:
+        alias = alias_map.get(module)
+        if alias:
+            desired.add(alias)
 
     # Drop aliases that are no longer selected, but never touch user values.
     for name in list(_pycalc_auto):
@@ -244,16 +248,16 @@ def _pycalc_set_libraries(ids_json):
         _pycalc_auto.pop(name, None)
 
     conflicts: list[str] = []
+    errors: list[str] = []
     _pycalc_apply_math(conflicts)
-    if "numpy" in selected:
-        _pycalc_apply_numpy(conflicts)
-    if "pyplot" in selected:
-        _pycalc_apply_pyplot(conflicts)
-    if "sympy" in selected:
-        _pycalc_apply_sympy(conflicts)
+    for module in selected:
+        alias = alias_map.get(module)
+        if alias:
+            _pycalc_apply_module(module, alias, conflicts, errors)
 
     return json.dumps(
-        {"applied": selected, "conflicts": conflicts}, ensure_ascii=False
+        {"applied": selected, "conflicts": conflicts, "errors": errors},
+        ensure_ascii=False,
     )
 
 

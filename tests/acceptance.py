@@ -35,10 +35,20 @@ def log(message: str) -> None:
     print(message, flush=True)
 
 
-def build_case(name: str, libs: list[str], version: str) -> Path:
+def build_case(
+    name: str,
+    libs: list[str],
+    version: str,
+    aliases: dict[str, str] | None = None,
+) -> Path:
     output = OUT / name
     result = build(
-        BuildConfig(libs=libs, output=output, pyodide_version=version),
+        BuildConfig(
+            libs=libs,
+            aliases=aliases,
+            output=output,
+            pyodide_version=version,
+        ),
         log=lambda message: None,
     )
     assert result.output and result.output.exists()
@@ -94,6 +104,7 @@ def test_minimal_314() -> None:
         assert version["pyodide"] == "314.0.7" and version["python"] == "3.14.2", version
         assert browser.eval("window.__pycalc.engine()") == "cloudpickle"
         assert browser.eval("document.getElementById('sympy-output-wrap').classList.contains('hidden')")
+        assert browser.eval("document.querySelectorAll('.lib-chip').length") == 0
         run_and_check(browser, "print(1 + 1)", "2\n")
         assert browser.eval("window.__pycalc.getEditorValue()") == ""
         run_and_check(browser, "print(sin(pi / 2))", "1.0\n")
@@ -189,6 +200,10 @@ def test_full_314() -> None:
     shutil.rmtree(profile, ignore_errors=True)
     with Browser(file_url(html), profile=profile, timeout=180) as browser:
         browser.wait_ready(timeout=180)
+        chip_values = browser.eval(
+            "[...document.querySelectorAll('.lib-chip input')].map((item) => item.value)"
+        )
+        assert set(chip_values) == {"numpy", "matplotlib.pyplot", "sympy"}, chip_values
         run_and_check(
             browser,
             "import sympy as sp\nx = sp.symbols('x')\nprint(sp.integrate(x**2, x))",
@@ -271,8 +286,36 @@ def test_full_0278() -> None:
     log("  PASS full 0.27.8")
 
 
+def test_custom_libraries() -> None:
+    log("[4] custom library aliases")
+    html = build_case(
+        "custom314.html",
+        ["numpy"],
+        "314.0.7",
+        aliases={"np": "numpy", "la": "numpy.linalg"},
+    )
+    profile = OUT / "profiles" / "custom-libs"
+    shutil.rmtree(profile, ignore_errors=True)
+    with Browser(file_url(html), profile=profile, timeout=180) as browser:
+        browser.wait_ready(timeout=180)
+        chips = browser.eval(
+            "[...document.querySelectorAll('.lib-chip')].map((item) => ({"
+            "value: item.querySelector('input').value, text: item.textContent}))"
+        )
+        assert {item["value"] for item in chips} == {"numpy", "numpy.linalg"}, chips
+        assert any("la" in item["text"] for item in chips), chips
+
+        assert browser.eval("window.__pycalc.selectLibraries(['la'])") == ["numpy.linalg"]
+        run_and_check(browser, "print(la.norm([3, 4]))", "5.0\n")
+        run_and_check(browser, "print('np' in globals())", "False\n")
+        browser.eval("window.__pycalc.selectLibraries(['np'])")
+        run_and_check(browser, "print(np.array([1, 2]).sum())", "3\n")
+        assert_no_network(browser)
+    log("  PASS custom libraries")
+
+
 def test_new_features() -> None:
-    log("[4] languages, libraries, tables, compact console, editor behaviour")
+    log("[5] languages, libraries, tables, compact console, editor behaviour")
     html = OUT / "full314.html"
     profile = OUT / "profiles" / "new-features"
     shutil.rmtree(profile, ignore_errors=True)
@@ -516,7 +559,7 @@ def test_new_features() -> None:
 
 
 def test_cross_version_history() -> None:
-    log("[5] cross-version history (314 -> 0.27.8)")
+    log("[6] cross-version history (314 -> 0.27.8)")
     profile = OUT / "profiles" / "cross-version"
     shutil.rmtree(profile, ignore_errors=True)
     with Browser(file_url(OUT / "full314.html"), profile=profile, timeout=180) as browser:
@@ -548,6 +591,7 @@ def main() -> int:
         test_minimal_314()
         test_full_314()
         test_full_0278()
+        test_custom_libraries()
         test_new_features()
         test_cross_version_history()
     except Exception:

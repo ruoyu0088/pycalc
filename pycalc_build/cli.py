@@ -8,8 +8,9 @@ import sys
 from pathlib import Path
 
 from .api import BuildConfig, build
-from .config import DEFAULT_OUTPUT, DEFAULT_PYODIDE_VERSION
+from .config import APP_VERSION, DEFAULT_OUTPUT, DEFAULT_PYODIDE_VERSION
 from .i18n import LANGUAGES
+from .libraries import parse_alias_lines
 from .resolve import selectable_packages
 from .runtime import ensure_runtime
 
@@ -25,6 +26,21 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         metavar="NAME",
         help="Libraries to embed, e.g. numpy sympy matplotlib; empty means stdlib only.",
+    )
+    parser.add_argument(
+        "--alias",
+        action="append",
+        default=None,
+        metavar="NAME=MODULE",
+        help=(
+            "Auto-import alias, e.g. np=numpy or plt:matplotlib.pyplot. "
+            "May be repeated; defaults exist for numpy/matplotlib/sympy/pandas."
+        ),
+    )
+    parser.add_argument(
+        "--no-default-aliases",
+        action="store_true",
+        help="Do not add conventional aliases when --alias is omitted.",
     )
     parser.add_argument(
         "--output",
@@ -43,7 +59,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--fetch-only", action="store_true", help="Prepare the cache but do not render HTML")
     parser.add_argument("--list-libs", action="store_true", help="List available packages for the version and exit")
     parser.add_argument("--json", action="store_true", help="Print the build result as JSON on stdout")
-    parser.add_argument("--version", action="version", version="PyCalc 0.1.0")
+    parser.add_argument("--version", action="version", version=f"PyCalc {APP_VERSION}")
     return parser
 
 
@@ -79,6 +95,11 @@ def main(argv: list[str] | None = None) -> int:
                 log=log,
             )
 
+        aliases = (
+            parse_alias_lines(args.alias)
+            if args.alias
+            else ({} if args.no_default_aliases else None)
+        )
         config = BuildConfig(
             libs=args.libs or [],
             output=Path(args.output),
@@ -88,6 +109,7 @@ def main(argv: list[str] | None = None) -> int:
             gzip_wasm=not args.no_gzip,
             fetch_only=args.fetch_only,
             lang=args.lang,
+            aliases=aliases,
         )
         result = build(config, log=log)
         if args.json:

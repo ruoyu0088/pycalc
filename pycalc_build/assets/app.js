@@ -57,6 +57,32 @@
   const PY_GLUE_SOURCE = $('pycalc-glue').textContent;
   const AVAILABLE_LIBS = Array.isArray(CFG.availableLibraries) ? CFG.availableLibraries : [];
   const AVAILABLE_LIB_IDS = new Set(AVAILABLE_LIBS.map((lib) => lib.id));
+  const LEGACY_LIBRARY_IDS = { pyplot: 'matplotlib.pyplot' };
+
+  function normalizeLibraryId(value) {
+    const id = String(value || '');
+    if (AVAILABLE_LIB_IDS.has(id)) return id;
+    const byAlias = AVAILABLE_LIBS.find((lib) => lib.alias === id);
+    if (byAlias) return byAlias.id;
+    return LEGACY_LIBRARY_IDS[id] || null;
+  }
+
+  function libraryAliasMap() {
+    const result = {};
+    for (const lib of AVAILABLE_LIBS) {
+      if (lib.id && lib.alias) result[lib.id] = lib.alias;
+    }
+    return result;
+  }
+
+  function normalizeLibraryList(values) {
+    const result = [];
+    for (const value of values || []) {
+      const id = normalizeLibraryId(value);
+      if (id && AVAILABLE_LIB_IDS.has(id) && !result.includes(id)) result.push(id);
+    }
+    return result;
+  }
 
   const BUILTIN_COMPLETIONS = [
     ['print', '(*args, sep=" ", end="\\n", file=None, flush=False)'],
@@ -822,7 +848,8 @@ del _pycalc_glue_source
       label.classList.toggle('checked', input.checked);
       input.addEventListener('change', onLibraryChange);
       label.appendChild(input);
-      label.appendChild(el('span', '', I18n.t(`libraries.${lib.id}`) || lib.label));
+      const text = lib.alias ? `${lib.label} (${lib.alias})` : lib.label;
+      label.appendChild(el('span', '', text));
       host.appendChild(label);
     }
   }
@@ -845,7 +872,7 @@ del _pycalc_glue_source
     state.history = Array.isArray(data.history) ? data.history : [];
     state.executionCount = Number(index.executionCount || 0);
     state.draft = data.draft || '';
-    state.libraries = data.libraries || [];
+    state.libraries = normalizeLibraryList(data.libraries);
     state.namespace = data.namespace || null;
     state.namespaceMeta = data.namespaceMeta || null;
     state.historyNav = { index: null, draft: '' };
@@ -1094,9 +1121,14 @@ del _pycalc_glue_source
       window.__pycalcBootStage = 'restore:reset';
       py.reset();
       window.__pycalcBootStage = 'restore:libraries';
-      const libResult = JSON.parse(py.setLibraries(JSON.stringify(state.libraries)));
+      const libResult = JSON.parse(py.setLibraries(
+        JSON.stringify(state.libraries), JSON.stringify(libraryAliasMap())
+      ));
       if (libResult.conflicts && libResult.conflicts.length) {
         banner('banner.libraryConflict', { names: libResult.conflicts.join(', ') }, 'warn', true);
+      }
+      if (libResult.errors && libResult.errors.length) {
+        banner('banner.libraryImport', { names: libResult.errors.join('; ') }, 'bad', true);
       }
       window.__pycalcBootStage = 'restore:imports';
       const codes = state.history.map((entry) => entry.code).filter(Boolean);
@@ -1146,10 +1178,15 @@ del _pycalc_glue_source
   function applyLibraries(announce = true) {
     if (!py) return [];
     try {
-      const result = JSON.parse(py.setLibraries(JSON.stringify(state.libraries)));
+      const result = JSON.parse(py.setLibraries(
+        JSON.stringify(state.libraries), JSON.stringify(libraryAliasMap())
+      ));
       const conflicts = result.conflicts || [];
       if (announce && conflicts.length) {
         banner('banner.libraryConflict', { names: conflicts.join(', ') }, 'warn', true);
+      }
+      if (announce && result.errors && result.errors.length) {
+        banner('banner.libraryImport', { names: result.errors.join('; ') }, 'bad', true);
       }
       return conflicts;
     } catch (err) {
@@ -2046,7 +2083,7 @@ del _pycalc_glue_source
     setRunKey: (key) => applyRunKey(key),
     setSympyOutput: (mode) => applySympyOutput(mode),
     selectLibraries: async (ids) => {
-      state.libraries = (ids || []).filter((id) => AVAILABLE_LIB_IDS.has(id));
+      state.libraries = normalizeLibraryList(ids);
       renderLibraryBar();
       applyLibraries(true);
       refreshInspector();

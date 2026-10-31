@@ -22,7 +22,7 @@ pycalc-app/
 ## 快速开始
 
 1. 双击 `start.bat`，打开构建器。
-2. 勾选需要的内联库（默认 numpy / sympy / matplotlib），选择输出路径，点「构建」或「构建并打开」。
+2. 在「Libraries」文本编辑器里定义要内联的包和别名（默认 numpy / matplotlib / sympy），选择输出路径，点「构建」或「构建并打开」。
 3. 生成完成后双击 HTML（或点「打开输出文件」）。
 
 首次构建需要联网下载 Pyodide 运行时和 wheel；之后会复用 `cache/`，可以勾选「仅使用缓存（离线）」。
@@ -47,9 +47,55 @@ python build.py --list-libs --pyodide-version 314.0.7
 
 :: 构建日志语言（zh / en / ja）
 python build.py --libs numpy --lang ja --output dist\pycalc-ja.html
+
+:: 自定义自动导入别名（可重复；也可用 np:numpy 写法）
+python build.py --libs numpy sympy --alias np=numpy --alias sp=sympy --output dist\pycalc.html
+
+:: 只内联包，不自动导入/不生成库勾选项
+python build.py --libs numpy --no-default-aliases --output dist\plain.html
 ```
 
 构建完成会打印最终 HTML 的**精确字节数**、Python 版本、依赖闭包和耗时。加 `--json` 可得到机器可读结果（日志走 stderr）。
+
+---
+
+## 库定义与别名
+
+Tk 构建器里的 **Libraries** 文本编辑器直接决定 HTML 内嵌哪些包，以及 HTML 顶部出现哪些自动导入勾选项。默认内容：
+
+```text
+# Packages embedded into the HTML (comma or whitespace separated).
+numpy, matplotlib, sympy
+
+# alias = import module (a colon also works)
+np = numpy
+plt = matplotlib.pyplot
+sp = sympy
+```
+
+规则：
+
+- 不含 `=` / `:` 的行是**包列表**，可用逗号或空格分隔；可以写多行。
+- 含 `=` 或 `:` 的行是**别名定义**：`alias = 导入模块`。例如 `pd = pandas`、`np:numpy`。
+- 空行、`#` / `;` 注释会被忽略；也支持可选的 `[packages]` / `[aliases]` 分节，便于阅读。
+- 别名必须是合法 Python 标识符；同一个别名或同一个模块不能重复定义。
+- 包对应哪个模块由 Pyodide lock 的 `imports` 元数据推断，因此 `plt = matplotlib.pyplot`、`sk = sklearn`（包为 scikit-learn）这类子模块/不同名模块都能解析。
+- 如果别名指向的模块不被已选包提供，构建会明确报错，提示补上提供该模块的包。
+- **一个别名对应一个 HTML 勾选项**。只写包、不写别名时，该包仍会内联，但不会产生自动导入勾选项。
+- 勾选项行为：勾选 `np = numpy` 后，HTML 自动执行 `import numpy as np`；勾选 `plt = matplotlib.pyplot` 后自动 `import matplotlib.pyplot as plt`；`pd = pandas` 同理。
+
+用户示例（包含 pandas）：
+
+```text
+numpy, matplotlib, sympy, pandas
+
+np = numpy
+plt = matplotlib.pyplot
+sp = sympy
+pd = pandas
+```
+
+GUI 的所有设置（包括这段库定义）保存在 `gui_settings.json`；下次启动自动恢复。旧版本只保存 `libs` 列表的配置会自动迁移成新文本格式。
 
 ---
 
@@ -60,7 +106,7 @@ python build.py --libs numpy --lang ja --output dist\pycalc-ja.html
 1. 推送到默认分支 `main` 或 `master`（也可以在 Actions 页面手动运行 `Build and deploy PyCalc`）。
 2. 一次性打开仓库 **Settings → Pages → Build and deployment**，把 **Source** 设为 **GitHub Actions**。GitHub 的 API 允许用 PAT 自动开启 Pages，但默认 `GITHUB_TOKEN` 不能完成“首次启用”，所以这里需要手动点一次；之后每次 push 都会全自动发布。若希望首次也零点击，可创建一个有 Pages 写权限的 PAT，保存为 `PAGES_TOKEN`，再在 `configure-pages` 步骤加 `token: ${{ secrets.PAGES_TOKEN }}` 和 `enablement: true`。
 3. workflow 会：
-   - 运行核心单元测试；
+   - 运行单元测试（无显示环境会自动跳过 Tk 测试）；
    - 下载/复用缓存的 Pyodide 运行时和 wheel；
    - 构建全量 HTML；
    - 输出 `_site/index.html`；
@@ -77,7 +123,7 @@ env:
   PYCALC_LIBS: "numpy sympy matplotlib"
 ```
 
-想改变内联库或 Pyodide 版本时改这里即可。首次运行需要从 CDN 下载运行时和 wheel，之后会复用 `cache/`；HTML 约 34 MB，在 GitHub Pages 的容量限制内。
+想改变内联库或 Pyodide 版本时改这里即可。默认会使用 CLI 的常规别名（`np` / `plt` / `sp` / `pd`）；如果 Pages 构建也需要自定义别名，请在工作流的 `python build.py` 命令中追加 `--alias` 参数（Tk 的 `gui_settings.json` 只在本机使用，不会自动同步到 Actions）。首次运行需要从 CDN 下载运行时和 wheel，之后会复用 `cache/`；HTML 约 34 MB，在 GitHub Pages 的容量限制内。
 
 注意：Pages 站点是独立的 `https://` origin，它的 IndexedDB 会话与本地 `file://` 打开的 HTML **不会共享**；这是浏览器同源策略决定的。
 
@@ -99,7 +145,7 @@ env:
 - 属性补全优先使用实时命名空间；尚未运行的赋值会对常见 numpy/sympy/matplotlib 构造器和类型注解做静态推断，其他复杂表达式仍建议先运行再补全。
 - **运行键可选**：`Ctrl/Cmd+Enter` 或 `Enter`。选择 `Enter` 时，只有 Python 认为代码“完整”才运行（`def`/`if`/括号未闭合、语法错误等都保持换行）；`Shift+Enter` 始终换行；输入法组合输入时不会误触发。
 - **明暗主题**：CSS、CodeMirror 语法高亮、Matplotlib 默认样式一起切换。首次跟随系统 `prefers-color-scheme`，之后记住选择。Matplotlib 只影响切换主题之后生成的图，历史 PNG 不重绘。
-- **扩展库 checkbox**：输入框上方列出本 HTML 实际打包的扩展库，例如 `numpy (np)`、`pyplot (plt)`、`sympy (sp)`。勾选后自动导入，无需写 `import`。新会话默认只加载 Math，扩展库需要勾选；选择状态保存在会话里，切换会话时恢复。
+- **扩展库 checkbox**：输入框上方列出**构建时库定义**里的每个别名，例如 `numpy (np)`、`matplotlib.pyplot (plt)`、`sympy (sp)`、`pandas (pd)`。勾选后自动导入，无需写 `import`。新会话默认只加载 Math，扩展库需要勾选；选择状态保存在会话里，切换会话时恢复。
 - **Math 始终加载**：`sin, cos, tan, sqrt, exp, log, log10, factorial, pi, e, inf, nan` 等名字可直接使用，像普通计算器一样；Math 不出现在扩展库列表中，也不会写入变量表。
 - **左侧栏两张表**：当前会话的用户变量（名称 / 类型 / 值）和用户函数（名称 / 参数）。每次运行、切换会话、修改扩展库后刷新；自动导入的名字和函数不会出现在表里。
 
@@ -192,6 +238,7 @@ python tests\acceptance.py
 - 属性补全（`x.` / `np.`）、类型推断（`ndarray`）、函数签名 Hint、括号/引号自动配对、选区高对比；
 - SymPy 文本/数学输出切换、MathML 渲染、跨刷新偏好恢复；
 - `ans` 保存非 None 结果、None/错误不覆盖、跨刷新恢复；
+- 库定义文本解析、别名/模块去重、包→模块 provider 推断、GUI 配置持久化与旧配置迁移；
 - 侧栏拖动宽度并跨刷新记住；
 - Enter / Ctrl+Enter 两种运行键，真实键盘事件下完整性与 `↑` 历史导航；
 - 明暗主题与 Matplotlib 只影响后续图；

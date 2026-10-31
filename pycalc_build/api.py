@@ -6,7 +6,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Mapping
 
 from .cache import human_size
 from .config import (
@@ -23,6 +23,7 @@ from .config import (
 )
 from .embed import encode_file, should_gzip_runtime
 from .i18n import MESSAGES, tr
+from .libraries import default_aliases
 from .render import render_page
 from .resolve import Package, package_version_map, resolve_closure
 from .runtime import RuntimeSpec, ensure_runtime, ensure_wheel
@@ -40,6 +41,9 @@ class BuildConfig:
     gzip_wasm: bool = True
     fetch_only: bool = False
     lang: str = "en"
+    # alias -> imported module.  None means use the conventional aliases for
+    # known packages; an empty dict means the HTML gets no library checkboxes.
+    aliases: dict[str, str] | None = None
 
 
 @dataclass
@@ -75,17 +79,59 @@ def _make_logger(log: Log | None) -> Log:
     return print
 
 
-def available_libraries(packages: Iterable[Package]) -> list[dict]:
-    """Libraries that can be auto-imported by the generated HTML."""
+def _library_provider(module: str, packages: Iterable[Package]) -> Package | None:
+    """Find the package whose Pyodide ``imports`` metadata provides *module*."""
 
-    names = {pkg.name for pkg in packages}
+    best: Package | None = None
+    best_import = ""
+    for pkg in packages:
+        imports = [str(item) for item in (pkg.info.get("imports") or ())]
+        if pkg.name == module or module.startswith(pkg.name + "."):
+            imports.append(pkg.name)
+        for imported in imports:
+            if (module == imported or module.startswith(imported + ".")) and len(imported) > len(best_import):
+                best = pkg
+                best_import = imported
+    return best
+
+
+def available_libraries(
+    packages: Iterable[Package],
+    aliases: Mapping[str, str] | None = None,
+) -> list[dict]:
+    """Resolve alias -> module mappings into HTML library definitions.
+
+    ``aliases`` maps a short Python alias to an importable module.  The
+    package that provides each module is inferred from Pyodide's lock
+    metadata (``imports``), so submodules such as ``matplotlib.pyplot`` work
+    without an extra mapping.
+    """
+
+    package_list = list(packages)
+    alias_map = (
+        dict(aliases)
+        if aliases is not None
+        else default_aliases(pkg.name for pkg in package_list)
+    )
     result: list[dict] = []
-    if "numpy" in names:
-        result.append({"id": "numpy", "label": "numpy", "alias": "np"})
-    if "matplotlib" in names:
-        result.append({"id": "pyplot", "label": "pyplot", "alias": "plt"})
-    if "sympy" in names:
-        result.append({"id": "sympy", "label": "sympy", "alias": "sp"})
+    for alias, module in alias_map.items():
+        alias = str(alias)
+        module = str(module)
+        provider = _library_provider(module, package_list)
+        if provider is None:
+            raise ValueError(
+                f"Library alias {alias!r} imports {module!r}, but no selected package "
+                "provides that module. Add its providing package to the package list."
+            )
+        result.append(
+            {
+                "id": module,
+                "label": module,
+                "alias": alias,
+                "module": module,
+                "package": provider.name,
+            }
+        )
     return result
 
 
@@ -138,6 +184,15 @@ def build(config: BuildConfig, log: Log | None = None) -> BuildResult:
     closure = resolve_closure(spec.lock, roots)
     versions = package_version_map(closure)
     say(t("build.resolved", packages=", ".join(f"{name} {ver}" for name, ver in versions.items())))
+
+    alias_map = (
+        dict(config.aliases)
+        if config.aliases is not None
+        else default_aliases(user_libs)
+    )
+    # Fail before downloading wheels if an alias references a module that the
+    # selected packages do not provide.
+    libraries = available_libraries(closure, alias_map)
 
     wheel_paths = _ensure_wheels(spec, closure, config=config, log=say)
     say(t(
@@ -198,7 +253,7 @@ def build(config: BuildConfig, log: Log | None = None) -> BuildResult:
         "packages": roots,
         "packageVersions": versions,
         "libs": user_libs,
-        "availableLibraries": available_libraries(closure),
+        "availableLibraries": libraries,
         "gzipWasm": config.gzip_wasm,
         "dbName": APP_DB_NAME,
         "appId": APP_ID,

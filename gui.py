@@ -38,10 +38,16 @@ from pycalc_build.i18n import (  # noqa: E402
     detect_language,
     tr,
 )
+from pycalc_build.libraries import (  # noqa: E402
+    DEFAULT_LIBRARY_SPEC,
+    LibrarySpecError,
+    default_aliases,
+    format_library_spec,
+    parse_library_spec,
+)
 
 SETTINGS_PATH = ROOT / "gui_settings.json"
 TESTED_VERSIONS = list(KNOWN_VERSIONS.keys())
-KNOWN_LIBS = ["numpy", "sympy", "matplotlib"]
 
 
 class PyCalcGui:
@@ -61,10 +67,8 @@ class PyCalcGui:
         self.var_version = tk.StringVar(value=DEFAULT_PYODIDE_VERSION)
         self.var_offline = tk.BooleanVar(value=False)
         self.var_gzip = tk.BooleanVar(value=True)
-        self.var_extra = tk.StringVar(value="")
         self.var_status = tk.StringVar(value="")
         self.var_language = tk.StringVar(value=LANGUAGE_NAMES[self.lang])
-        self.var_libs = {name: tk.BooleanVar(value=True) for name in KNOWN_LIBS}
 
         self._setup_style()
         self._build_widgets()
@@ -178,26 +182,23 @@ class PyCalcGui:
         self._register(browse, "gui.browse")
 
         libs_label = ttk.Label(options, text="")
-        libs_label.grid(row=1, column=0, sticky="nw", pady=6)
+        libs_label.grid(row=1, column=0, sticky="nw", pady=(6, 2))
         self._register(libs_label, "gui.libs")
-        libs_frame = ttk.Frame(options)
-        libs_frame.grid(row=1, column=1, columnspan=2, sticky="w", padx=(8, 0), pady=6)
-        for name in KNOWN_LIBS:
-            check = ttk.Checkbutton(libs_frame, text=name, variable=self.var_libs[name])
-            check.pack(side="left", padx=(0, 14))
-        extra_label = ttk.Label(libs_frame, text="")
-        extra_label.pack(side="left", padx=(8, 4))
-        self._register(extra_label, "gui.extra")
-        ttk.Entry(libs_frame, textvariable=self.var_extra, width=20).pack(side="left")
-        extra_hint = ttk.Label(libs_frame, text="", style="Subtle.TLabel")
-        extra_hint.pack(side="left", padx=(6, 0))
-        self._register(extra_hint, "gui.extraHint")
+        lib_editor = ttk.Frame(options)
+        lib_editor.grid(row=1, column=1, columnspan=2, sticky="ew", padx=(8, 0), pady=(6, 2))
+        lib_editor.columnconfigure(0, weight=1)
+        self.lib_text = ScrolledText(lib_editor, height=9, wrap="word", undo=True)
+        self.lib_text.grid(row=0, column=0, sticky="nsew")
+        self.lib_text.configure(font=("Consolas", 9))
+        lib_hint = ttk.Label(options, text="", style="Subtle.TLabel")
+        lib_hint.grid(row=2, column=1, columnspan=2, sticky="w", padx=(8, 0), pady=(0, 4))
+        self._register(lib_hint, "gui.libHint")
 
         version_label = ttk.Label(options, text="")
-        version_label.grid(row=2, column=0, sticky="w", pady=3)
+        version_label.grid(row=3, column=0, sticky="w", pady=3)
         self._register(version_label, "gui.version")
         version_row = ttk.Frame(options)
-        version_row.grid(row=2, column=1, columnspan=2, sticky="w", padx=(8, 0), pady=3)
+        version_row.grid(row=3, column=1, columnspan=2, sticky="w", padx=(8, 0), pady=3)
         self.version_box = ttk.Combobox(
             version_row,
             textvariable=self.var_version,
@@ -210,7 +211,7 @@ class PyCalcGui:
         self._register(version_hint, "gui.versionHint")
 
         checks = ttk.Frame(options)
-        checks.grid(row=3, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        checks.grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
         gzip = ttk.Checkbutton(checks, text="", variable=self.var_gzip)
         gzip.pack(side="left")
         self._register(gzip, "gui.gzip")
@@ -259,13 +260,22 @@ class PyCalcGui:
     # settings
     # ------------------------------------------------------------------
 
+    def _library_text(self) -> str:
+        return self.lib_text.get("1.0", "end-1c")
+
+    def _set_library_text(self, text: str) -> None:
+        self.lib_text.delete("1.0", "end")
+        self.lib_text.insert("1.0", text)
+
     def _load_settings(self) -> None:
-        if not SETTINGS_PATH.exists():
-            return
-        try:
-            data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            return
+        data: dict = {}
+        if SETTINGS_PATH.exists():
+            try:
+                loaded = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    data = loaded
+            except Exception:
+                data = {}
         language = data.get("language")
         if language in LANGUAGES:
             self.lang = language
@@ -273,21 +283,25 @@ class PyCalcGui:
             self.var_output.set(data["output"])
         if isinstance(data.get("pyodide_version"), str):
             self.var_version.set(data["pyodide_version"])
-        libs = data.get("libs")
-        if isinstance(libs, list):
-            for name in KNOWN_LIBS:
-                self.var_libs[name].set(name in libs)
-            extra = [name for name in libs if name not in KNOWN_LIBS]
-            self.var_extra.set(", ".join(extra))
         self.var_offline.set(bool(data.get("offline", False)))
         self.var_gzip.set(bool(data.get("gzip", True)))
+
+        spec = data.get("library_spec")
+        if not isinstance(spec, str):
+            old_libs = data.get("libs")
+            if isinstance(old_libs, list) and old_libs:
+                packages = [str(name) for name in old_libs if str(name)]
+                spec = format_library_spec(packages, default_aliases(packages))
+            else:
+                spec = DEFAULT_LIBRARY_SPEC
+        self._set_library_text(spec)
 
     def _save_settings(self) -> None:
         data = {
             "language": self.lang,
             "output": self.var_output.get(),
             "pyodide_version": self.var_version.get(),
-            "libs": self._selected_libs(),
+            "library_spec": self._library_text(),
             "offline": self.var_offline.get(),
             "gzip": self.var_gzip.get(),
         }
@@ -295,13 +309,6 @@ class PyCalcGui:
             SETTINGS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         except OSError:
             pass
-
-    def _selected_libs(self) -> list[str]:
-        libs = [name for name in KNOWN_LIBS if self.var_libs[name].get()]
-        for name in self.var_extra.get().replace(",", " ").split():
-            if name not in libs:
-                libs.append(name)
-        return libs
 
     def _on_language_selected(self, _event=None) -> None:
         display = self.var_language.get()
@@ -357,7 +364,12 @@ class PyCalcGui:
     def _start_build(self, open_after: bool) -> None:
         if self.building:
             return
-        libs = self._selected_libs()
+        try:
+            packages, aliases = parse_library_spec(self._library_text())
+        except LibrarySpecError as exc:
+            messagebox.showerror(self.tr("gui.errorLibraries"), str(exc))
+            self._set_status("gui.statusFailed")
+            return
         output_text = self.var_output.get().strip()
         if not output_text:
             messagebox.showerror(self.tr("gui.errorTitle"), self.tr("gui.errorOutput"))
@@ -383,7 +395,8 @@ class PyCalcGui:
         self._append_log(f"PyCalc {APP_VERSION}")
 
         config = BuildConfig(
-            libs=libs,
+            libs=packages,
+            aliases=aliases,
             output=output,
             pyodide_version=version,
             offline=self.var_offline.get(),
@@ -446,6 +459,7 @@ class PyCalcGui:
         state = ["disabled"] if busy else ["!disabled"]
         for widget in (self.build_btn, self.build_open_btn, self.version_box):
             widget.state(state)
+        self.lib_text.configure(state="disabled" if busy else "normal")
         if busy:
             self.progress.grid()
             self.progress.start(12)
