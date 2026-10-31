@@ -7,6 +7,7 @@
     "build": "esbuild src/editor.js --bundle --minify --format=iife --global-name=PyCalcEditor --outfile=../pycalc_build/assets/editor.bundle.js"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6.20.4",
     "@codemirror/commands": "^6.8.1",
     "@codemirror/lang-python": "^6.2.1",
     "@codemirror/language": "^6.11.0",

@@ -1,12 +1,20 @@
 import { Compartment, EditorState, Prec } from '@codemirror/state';
 import {
   EditorView,
+  ViewPlugin,
   drawSelection,
   highlightActiveLine,
   keymap,
   lineNumbers,
   placeholder,
 } from '@codemirror/view';
+import {
+  autocompletion,
+  closeBrackets,
+  closeBracketsKeymap,
+  completionKeymap,
+  completionStatus,
+} from '@codemirror/autocomplete';
 import {
   defaultKeymap,
   history,
@@ -75,10 +83,10 @@ function makeTheme(dark) {
       '.cm-activeLine': { backgroundColor: dark ? '#1b222b' : '#f8fafc' },
       '.cm-activeLineGutter': { backgroundColor: dark ? '#212a35' : '#eef2f7' },
       '.cm-selectionBackground, ::selection': {
-        backgroundColor: dark ? '#264f78' : '#dbe7ff',
+        backgroundColor: dark ? '#3d5a80' : '#b6d4fe',
       },
       '&.cm-focused .cm-selectionBackground': {
-        backgroundColor: dark ? '#264f78' : '#dbe7ff',
+        backgroundColor: dark ? '#4a6fa5' : '#a8c7fa',
       },
       '.cm-cursor': { borderLeftColor: dark ? '#79c0ff' : '#2563eb' },
       '.cm-placeholder': { color: dark ? '#6e7681' : '#9aa3b2' },
@@ -104,6 +112,140 @@ function atLastLine(view) {
   return view.state.doc.lineAt(selection.head).number === view.state.doc.lines;
 }
 
+function findCallContext(state) {
+  const position = state.selection.main.head;
+  const text = state.doc.toString();
+  let depth = 0;
+  const lowerBound = Math.max(0, position - 4000);
+  for (let i = position - 1; i >= lowerBound; i -= 1) {
+    const ch = text[i];
+    if (ch === ')') {
+      depth += 1;
+    } else if (ch === '(') {
+      if (depth > 0) {
+        depth -= 1;
+        continue;
+      }
+      let end = i - 1;
+      while (end >= 0 && /\s/.test(text[end])) end -= 1;
+      const nameEnd = end + 1;
+      while (end >= 0 && /[\w.]/.test(text[end])) end -= 1;
+      const name = text.slice(end + 1, nameEnd);
+      if (name && /^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$/.test(name)) {
+        return { name, open: i };
+      }
+      return null;
+    }
+  }
+  return null;
+}
+
+function makeCompletionSource(getCompletions) {
+  return (context) => {
+    const word = context.matchBefore(/[A-Za-z_]\w*/);
+    if (!word) return null;
+    if (word.from === word.to && !context.explicit) return null;
+    const options = getCompletions();
+    if (!options || options.length === 0) return null;
+    return {
+      from: word.from,
+      options,
+      validFor: /^[A-Za-z_]\w*$/,
+    };
+  };
+}
+
+function signatureHelp(getSignature) {
+  return ViewPlugin.fromClass(
+    class {
+      constructor(view) {
+        this.view = view;
+        this.tip = document.createElement('div');
+        this.tip.className = 'signature-tip hidden';
+        document.body.appendChild(this.tip);
+        this.positionTimer = null;
+        this.onScroll = () => this.updatePosition();
+        this.onBlur = () => this.hide();
+        view.scrollDOM.addEventListener('scroll', this.onScroll);
+        view.dom.addEventListener('blur', this.onBlur);
+        window.addEventListener('resize', this.onScroll);
+      }
+
+      update(update) {
+        if (completionStatus(update.state) === 'active') {
+          this.hide();
+          return;
+        }
+        const call = findCallContext(update.state);
+        if (!call) {
+          this.hide();
+          return;
+        }
+        const signature = getSignature(call.name);
+        if (!signature) {
+          this.hide();
+          return;
+        }
+        this.tip.textContent = '';
+        const name = document.createElement('span');
+        name.className = 'sig-name';
+        name.textContent = call.name;
+        const args = document.createElement('span');
+        args.className = 'sig-args';
+        args.textContent = signature;
+        this.tip.append(name, args);
+        this.tip.classList.remove('hidden');
+        // Reading layout (coordsAtPos) is forbidden while CodeMirror is
+        // updating; defer the positioning to the next task.
+        this.schedulePosition();
+      }
+
+      schedulePosition() {
+        if (this.positionTimer !== null) clearTimeout(this.positionTimer);
+        this.positionTimer = setTimeout(() => {
+          this.positionTimer = null;
+          this.updatePosition();
+        }, 0);
+      }
+
+      updatePosition() {
+        if (this.tip.classList.contains('hidden')) return;
+        const position = this.view.state.selection.main.head;
+        const coords = this.view.coordsAtPos(position);
+        if (!coords) {
+          this.hide();
+          return;
+        }
+        this.tip.style.left = '0px';
+        this.tip.style.top = '0px';
+        const rect = this.tip.getBoundingClientRect();
+        let left = coords.left;
+        if (left + rect.width > window.innerWidth - 8) {
+          left = window.innerWidth - rect.width - 8;
+        }
+        let top = coords.bottom + 6;
+        if (top + rect.height > window.innerHeight - 8) {
+          top = coords.top - rect.height - 6;
+        }
+        this.tip.style.left = `${Math.max(8, left)}px`;
+        this.tip.style.top = `${Math.max(8, top)}px`;
+      }
+
+      hide() {
+        this.tip.classList.add('hidden');
+      }
+
+      destroy() {
+        if (this.positionTimer !== null) clearTimeout(this.positionTimer);
+        this.tip.remove();
+        this.view.scrollDOM.removeEventListener('scroll', this.onScroll);
+        this.view.dom.removeEventListener('blur', this.onBlur);
+        window.removeEventListener('resize', this.onScroll);
+      }
+    }
+  );
+}
+
 /**
  * Create a Python editor.
  *
@@ -115,7 +257,9 @@ function atLastLine(view) {
  *   onChange?: (value: string) => void,
  *   onRun?: () => void,
  *   onTryEnter?: () => boolean,
- *   onHistory?: (delta: number) => boolean
+ *   onHistory?: (delta: number) => boolean,
+ *   getCompletions?: () => Array<object>,
+ *   getSignature?: (name: string) => string|null
  * }} options
  */
 export function create(parent, options = {}) {
@@ -123,6 +267,8 @@ export function create(parent, options = {}) {
   const onRun = options.onRun || (() => {});
   const onTryEnter = options.onTryEnter || (() => false);
   const onHistory = options.onHistory || (() => false);
+  const getCompletions = options.getCompletions || (() => []);
+  const getSignature = options.getSignature || (() => null);
   const themeCompartment = new Compartment();
   const placeholderCompartment = new Compartment();
   let currentTheme = options.theme === 'dark' ? 'dark' : 'light';
@@ -141,6 +287,7 @@ export function create(parent, options = {}) {
         key: 'Enter',
         run: (view) => {
           if (view.composing) return false;
+          if (completionStatus(view.state) === 'active') return false;
           return onTryEnter() === true;
         },
       },
@@ -148,6 +295,7 @@ export function create(parent, options = {}) {
       {
         key: 'ArrowUp',
         run: (view) => {
+          if (completionStatus(view.state) === 'active') return false;
           if (!atFirstLine(view)) return false;
           return onHistory(-1) === true;
         },
@@ -155,6 +303,7 @@ export function create(parent, options = {}) {
       {
         key: 'ArrowDown',
         run: (view) => {
+          if (completionStatus(view.state) === 'active') return false;
           if (!atLastLine(view)) return false;
           return onHistory(1) === true;
         },
@@ -169,6 +318,14 @@ export function create(parent, options = {}) {
     highlightActiveLine(),
     indentOnInput(),
     bracketMatching(),
+    closeBrackets(),
+    autocompletion({
+      override: [makeCompletionSource(getCompletions)],
+      activateOnTyping: true,
+      closeOnBlur: true,
+      maxRenderedOptions: 80,
+    }),
+    signatureHelp(getSignature),
     indentUnit.of('    '),
     EditorState.tabSize.of(4),
     python(),
@@ -176,7 +333,13 @@ export function create(parent, options = {}) {
     themeCompartment.of(themeExtensions(currentTheme)),
     placeholderCompartment.of(placeholder(currentPlaceholder)),
     customKeymap,
-    keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+    keymap.of([
+      ...completionKeymap,
+      ...closeBracketsKeymap,
+      ...defaultKeymap,
+      ...historyKeymap,
+      indentWithTab,
+    ]),
     EditorView.updateListener.of((update) => {
       if (update.docChanged) onChange(update.state.doc.toString());
     }),

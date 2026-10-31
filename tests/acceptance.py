@@ -47,7 +47,7 @@ def build_case(name: str, libs: list[str], version: str) -> Path:
     return result.output
 
 
-def press(browser: Browser, name: str, code: str, vk: int) -> None:
+def press(browser: Browser, name: str, code: str, vk: int, modifiers: int = 0) -> None:
     for event_type in ("keyDown", "keyUp"):
         browser.call(
             "Input.dispatchKeyEvent",
@@ -57,6 +57,7 @@ def press(browser: Browser, name: str, code: str, vk: int) -> None:
                 "code": code,
                 "windowsVirtualKeyCode": vk,
                 "nativeVirtualKeyCode": vk,
+                "modifiers": modifiers,
             },
         )
 
@@ -260,6 +261,69 @@ def test_new_features() -> None:
         functions = browser.eval("window.__pycalc.functions()")
         assert any(row["name"] == "x" and row["type"] == "int" for row in variables), variables
         assert any(row["name"] == "f" and "b=2" in row["params"] for row in functions), functions
+        assert any(item["label"] == "f" and item["detail"] == "(a, b=2)"
+                   for item in browser.eval("window.__pycalc.completions()"))
+
+        # autocomplete: type "pri", accept, auto-close the bracket, and show
+        # the function-call signature hint.
+        browser.eval("window.__pycalc.setEditorText('')")
+        browser.eval("document.querySelector('.cm-content').focus()")
+        browser.call("Input.insertText", {"text": "pri"})
+        time.sleep(0.35)
+        popup = browser.eval("document.querySelector('.cm-tooltip-autocomplete')?.textContent || ''")
+        assert "print" in popup, popup
+        press(browser, "Enter", "Enter", 13)
+        assert browser.eval("window.__pycalc.getEditorValue()") == "print"
+        browser.call("Input.insertText", {"text": "("})
+        assert browser.eval("window.__pycalc.getEditorValue()") == "print()"
+        time.sleep(0.2)
+        sig = browser.eval("document.querySelector('.signature-tip')?.textContent || ''")
+        assert "print" in sig, sig
+        browser.eval("window.__pycalc.setEditorText('f(')")
+        time.sleep(0.2)
+        sig = browser.eval("document.querySelector('.signature-tip')?.textContent || ''")
+        assert "a, b=2" in sig, sig
+
+        # bracket / quote auto-completion
+        browser.eval("window.__pycalc.setEditorText('')")
+        browser.eval("document.querySelector('.cm-content').focus()")
+        for typed, expected in (("[", "[]"), ('"', '""')):
+            browser.eval("window.__pycalc.setEditorText('')")
+            browser.call("Input.insertText", {"text": typed})
+            assert browser.eval("window.__pycalc.getEditorValue()") == expected
+
+        # selection is visibly coloured
+        browser.eval("window.__pycalc.setEditorText('hello world')")
+        browser.eval("document.querySelector('.cm-content').focus()")
+        press(browser, "a", "KeyA", 65, modifiers=2)
+        time.sleep(0.25)
+        assert browser.eval("window.getSelection().toString()") == "hello world"
+        background = browser.eval(
+            "(() => { const e = document.querySelector('.cm-selectionBackground');"
+            " return e ? getComputedStyle(e).backgroundColor : ''; })()"
+        )
+        assert background not in ("", "transparent", "rgba(0, 0, 0, 0)"), background
+        browser.eval("window.__pycalc.setEditorText('')")
+
+        # sidebar width is draggable and remembered
+        width_before = browser.eval(
+            "parseFloat(getComputedStyle(document.documentElement)"
+            ".getPropertyValue('--sidebar-width'))"
+        )
+        browser.eval(
+            "(() => { const r = document.getElementById('sidebar-resizer');"
+            " const rect = r.getBoundingClientRect();"
+            " const opts = {bubbles: true, pointerId: 1, clientY: rect.top + 20};"
+            " r.dispatchEvent(new PointerEvent('pointerdown', {...opts, clientX: rect.left + 2}));"
+            " window.dispatchEvent(new PointerEvent('pointermove', {...opts, clientX: rect.left + 90}));"
+            " window.dispatchEvent(new PointerEvent('pointerup', {...opts, clientX: rect.left + 90}));"
+            " })()"
+        )
+        width_after = browser.eval(
+            "parseFloat(getComputedStyle(document.documentElement)"
+            ".getPropertyValue('--sidebar-width'))"
+        )
+        assert width_after > width_before, (width_before, width_after)
 
         # clickable In/Out prompts insert at the cursor instead of replacing
         browser.eval("window.__pycalc.setEditorText('12')")
@@ -355,6 +419,7 @@ def test_new_features() -> None:
         browser.wait_ready(timeout=180)
         ui = browser.eval("window.__pycalc.ui()")
         assert ui["language"] == "en" and ui["theme"] == "light" and ui["runKey"] == "enter", ui
+        assert abs(float(ui["sidebarWidth"]) - width_after) < 2, (ui, width_after)
         assert browser.eval("document.querySelector('.side-card h3').textContent") == "Variables"
         assert browser.eval("document.documentElement.dataset.theme") == "light"
         assert browser.eval("window.__pycalc.active()")["libraries"] == ["sympy"]

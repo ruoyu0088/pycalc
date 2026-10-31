@@ -524,6 +524,33 @@ def _pycalc_list_funcs():
     return json.dumps(rows[:_PYCALC_MAX_ROWS], ensure_ascii=False)
 
 
+def _pycalc_completion_items():
+    rows = []
+    for name, value in list(_pycalc_user_globals().items()):
+        if name in _PYCALC_PROTECTED or name in _PYCALC_SKIP_NAMES:
+            continue
+        if name.startswith("__") or name.startswith("_pycalc_"):
+            continue
+        if isinstance(value, types.ModuleType):
+            kind = "namespace"
+            detail = "module"
+        elif isinstance(value, (types.FunctionType, types.BuiltinFunctionType, types.MethodType)):
+            kind = "function"
+            try:
+                detail = str(inspect.signature(value))
+            except Exception:
+                detail = "(...)"
+        elif isinstance(value, type):
+            kind = "class"
+            detail = _pycalc_type_name(value)
+        else:
+            kind = "variable"
+            detail = _pycalc_type_name(value)
+        rows.append({"label": name, "type": kind, "detail": detail})
+    rows.sort(key=lambda row: row["label"].lower())
+    return json.dumps(rows[:500], ensure_ascii=False)
+
+
 def _pycalc_truncate(text):
     if text is None:
         return None

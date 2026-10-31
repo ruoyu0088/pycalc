@@ -58,6 +58,66 @@
   const AVAILABLE_LIBS = Array.isArray(CFG.availableLibraries) ? CFG.availableLibraries : [];
   const AVAILABLE_LIB_IDS = new Set(AVAILABLE_LIBS.map((lib) => lib.id));
 
+  const PY_KEYWORDS = [
+    'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue',
+    'def', 'del', 'elif', 'else', 'except', 'False', 'finally', 'for',
+    'from', 'global', 'if', 'import', 'in', 'is', 'lambda', 'None',
+    'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'True', 'try',
+    'while', 'with', 'yield',
+  ];
+
+  const BUILTIN_COMPLETIONS = [
+    ['print', '(*args, sep=" ", end="\\n", file=None, flush=False)'],
+    ['len', '(obj, /)'],
+    ['range', '(start, stop=None, step=1)'],
+    ['abs', '(x, /)'],
+    ['all', '(iterable, /)'],
+    ['any', '(iterable, /)'],
+    ['bool', '(x=False)'],
+    ['bytes', '(source, encoding, errors)'],
+    ['chr', '(i, /)'],
+    ['dict', '(**kwargs)'],
+    ['dir', '(obj=None)'],
+    ['divmod', '(x, y, /)'],
+    ['enumerate', '(iterable, start=0)'],
+    ['filter', '(function, iterable, /)'],
+    ['float', '(x=0.0)'],
+    ['format', '(value, format_spec="")'],
+    ['frozenset', '(iterable=())'],
+    ['getattr', '(obj, name, default)'],
+    ['hasattr', '(obj, name, /)'],
+    ['hash', '(obj, /)'],
+    ['hex', '(number, /)'],
+    ['id', '(obj, /)'],
+    ['input', '(prompt="")'],
+    ['int', '(x=0, base=10)'],
+    ['isinstance', '(obj, class_or_tuple, /)'],
+    ['issubclass', '(cls, class_or_tuple, /)'],
+    ['iter', '(iterable, sentinel)'],
+    ['list', '(iterable=())'],
+    ['map', '(function, iterable, /)'],
+    ['max', '(*args, key=None)'],
+    ['min', '(*args, key=None)'],
+    ['next', '(iterator, default)'],
+    ['object', '()'],
+    ['oct', '(number, /)'],
+    ['open', '(file, mode="r", encoding=None)'],
+    ['ord', '(c, /)'],
+    ['pow', '(base, exp, mod=None)'],
+    ['repr', '(obj, /)'],
+    ['reversed', '(sequence, /)'],
+    ['round', '(number, ndigits=None)'],
+    ['set', '(iterable=())'],
+    ['setattr', '(obj, name, value)'],
+    ['sorted', '(iterable, key=None, reverse=False)'],
+    ['str', '(object="", encoding, errors)'],
+    ['sum', '(iterable, start=0)'],
+    ['tuple', '(iterable=())'],
+    ['type', '(object)'],
+    ['vars', '(object=None)'],
+    ['zip', '(*iterables, strict=False)'],
+  ];
+
   function detectLanguage() {
     const nav = String(navigator.language || 'en').toLowerCase();
     if (nav.startsWith('ja')) return 'ja';
@@ -112,6 +172,7 @@
     theme: detectTheme(),
     runKey: 'ctrl-enter',
     sidebarHidden: false,
+    sidebarWidth: 292,
   };
 
   const state = {
@@ -134,6 +195,7 @@
     draftTimer: null,
     objectUrls: [],
     activeOutput: null,
+    completions: [],
     historyNav: { index: null, draft: '' },
     suppressEditorSave: false,
     ui: { ...DEFAULT_UI },
@@ -397,6 +459,7 @@ for _pycalc_name in (
     '_pycalc_replay_imports', '_pycalc_namespace_info',
     '_pycalc_set_libraries', '_pycalc_is_complete',
     '_pycalc_list_vars', '_pycalc_list_funcs', '_pycalc_set_plot_theme',
+    '_pycalc_completion_items',
 ):
     setattr(_pycalc_main, _pycalc_name, getattr(_pycalc_mod, _pycalc_name))
 del _pycalc_name
@@ -419,6 +482,7 @@ del _pycalc_glue_source
       listVars: pyodide.globals.get('_pycalc_list_vars'),
       listFuncs: pyodide.globals.get('_pycalc_list_funcs'),
       setPlotTheme: pyodide.globals.get('_pycalc_set_plot_theme'),
+      listCompletions: pyodide.globals.get('_pycalc_completion_items'),
     };
   }
 
@@ -599,6 +663,7 @@ del _pycalc_glue_source
       theme,
       runKey,
       sidebarHidden: Boolean(meta.sidebarHidden),
+      sidebarWidth: clampSidebarWidth(meta.sidebarWidth),
     };
   }
 
@@ -611,6 +676,7 @@ del _pycalc_glue_source
         theme: state.ui.theme,
         runKey: state.ui.runKey,
         sidebarHidden: state.ui.sidebarHidden,
+        sidebarWidth: state.ui.sidebarWidth,
       });
     } catch (err) {
       console.warn('could not save UI settings', err);
@@ -1105,6 +1171,57 @@ del _pycalc_glue_source
     queueSave({ snapshot: false });
   }
 
+  function refreshCompletions() {
+    if (!py || !state.ready) {
+      state.completions = [];
+      return;
+    }
+    try {
+      const rows = JSON.parse(py.listCompletions());
+      state.completions = Array.isArray(rows) ? rows : [];
+    } catch (err) {
+      console.warn('list completions failed', err);
+      state.completions = [];
+    }
+  }
+
+  function getCompletionOptions() {
+    const items = state.completions.map((item) => ({
+      label: item.label,
+      type: item.type || 'variable',
+      detail: item.detail || '',
+      info: item.type === 'function'
+        ? `${item.label}${item.detail || '(...)'}`
+        : `${item.label} : ${item.detail || item.type || ''}`,
+    }));
+    const seen = new Set(items.map((item) => item.label));
+    for (const [label, detail] of BUILTIN_COMPLETIONS) {
+      if (seen.has(label)) continue;
+      seen.add(label);
+      items.push({
+        label,
+        type: 'function',
+        detail,
+        info: `${label}${detail}`,
+      });
+    }
+    for (const keyword of PY_KEYWORDS) {
+      if (seen.has(keyword)) continue;
+      seen.add(keyword);
+      items.push({ label: keyword, type: 'keyword', detail: 'keyword' });
+    }
+    return items;
+  }
+
+  function signatureFor(name) {
+    if (!name || name.includes('.')) return null;
+    const item = state.completions.find((row) => row.label === name);
+    if (item && item.type === 'function') return item.detail || '(...)';
+    const builtin = BUILTIN_COMPLETIONS.find((row) => row[0] === name);
+    if (builtin) return builtin[1];
+    return null;
+  }
+
   function refreshInspector() {
     const varsBody = $('vars-body');
     const funcsBody = $('funcs-body');
@@ -1113,10 +1230,12 @@ del _pycalc_glue_source
     varsBody.innerHTML = '';
     funcsBody.innerHTML = '';
     if (!py || !state.ready) {
+      state.completions = [];
       varsCard.classList.add('empty');
       funcsCard.classList.add('empty');
       return;
     }
+    refreshCompletions();
     try {
       const vars = JSON.parse(py.listVars());
       for (const row of vars) {
@@ -1510,10 +1629,23 @@ del _pycalc_glue_source
     if (persist) saveUiMeta();
   }
 
+  function clampSidebarWidth(value) {
+    const max = Math.max(220, Math.min(520, window.innerWidth * 0.45));
+    const parsed = Number(value);
+    return Math.max(200, Math.min(Number.isFinite(parsed) ? parsed : 292, max));
+  }
+
+  function applySidebarWidth(value, persist = false) {
+    state.ui.sidebarWidth = clampSidebarWidth(value);
+    document.documentElement.style.setProperty('--sidebar-width', `${state.ui.sidebarWidth}px`);
+    if (persist) saveUiMeta();
+  }
+
   function applySidebar() {
     const mobile = window.innerWidth <= 880;
     document.body.classList.toggle('sidebar-collapsed', !mobile && state.ui.sidebarHidden);
     document.body.classList.toggle('sidebar-open', mobile && state.mobileSidebarOpen);
+    applySidebarWidth(state.ui.sidebarWidth);
   }
 
   async function setLanguage(lang) {
@@ -1571,6 +1703,32 @@ del _pycalc_glue_source
     });
     window.addEventListener('resize', applySidebar);
 
+    const resizer = $('sidebar-resizer');
+    let resizing = false;
+    const resizeMove = (event) => {
+      if (!resizing) return;
+      const workspace = $('workspace').getBoundingClientRect();
+      applySidebarWidth(event.clientX - workspace.left);
+    };
+    const resizeEnd = () => {
+      if (!resizing) return;
+      resizing = false;
+      document.body.classList.remove('resizing-sidebar');
+      applySidebarWidth(state.ui.sidebarWidth, true);
+    };
+    resizer.addEventListener('pointerdown', (event) => {
+      if (window.innerWidth <= 880) return;
+      resizing = true;
+      document.body.classList.add('resizing-sidebar');
+      if (typeof resizer.setPointerCapture === 'function') {
+        try { resizer.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
+      }
+      event.preventDefault();
+    });
+    window.addEventListener('pointermove', resizeMove);
+    window.addEventListener('pointerup', resizeEnd);
+    window.addEventListener('pointercancel', resizeEnd);
+
     document.addEventListener('keydown', (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         event.preventDefault();
@@ -1604,6 +1762,8 @@ del _pycalc_glue_source
         onRun: runCode,
         onTryEnter: tryRunOnEnter,
         onHistory: navigateHistory,
+        getCompletions: getCompletionOptions,
+        getSignature: signatureFor,
       });
       return {
         isCodeMirror: true,
@@ -1813,6 +1973,8 @@ del _pycalc_glue_source
     insertAtCursor: (text) => editor.insertAtCursor(text),
     variables: () => (py ? JSON.parse(py.listVars()) : []),
     functions: () => (py ? JSON.parse(py.listFuncs()) : []),
+    completions: () => getCompletionOptions(),
+    signature: (name) => signatureFor(name),
     ui: () => ({ ...state.ui }),
   };
 

@@ -169,7 +169,27 @@ button, select, textarea { font: inherit; }
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: 292px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width, 292px) 6px minmax(0, 1fr);
+}
+
+.sidebar-resizer {
+  cursor: col-resize;
+  background: transparent;
+  border-left: 1px solid transparent;
+  border-right: 1px solid transparent;
+  transition: background .12s ease;
+  touch-action: none;
+}
+
+.sidebar-resizer:hover,
+body.resizing-sidebar .sidebar-resizer {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+body.resizing-sidebar {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .sidebar {
@@ -454,6 +474,77 @@ pre.error {
 .cm-host .cm-scroller { overflow: auto; }
 .cm-editor.cm-focused { outline: none; }
 
+/* Make the selection clearly visible in both themes. */
+.cm-editor .cm-selectionBackground {
+  background-color: #b6d4fe !important;
+}
+
+[data-theme="dark"] .cm-editor .cm-selectionBackground {
+  background-color: #4a6fa5 !important;
+}
+
+.cm-editor .cm-content ::selection { background: transparent; }
+
+/* Autocomplete popup */
+.cm-tooltip {
+  background: var(--panel) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 7px !important;
+  box-shadow: 0 8px 24px rgba(16, 24, 40, .18) !important;
+  overflow: hidden;
+}
+
+.cm-tooltip-autocomplete > ul {
+  font-family: var(--mono) !important;
+  font-size: 12.5px !important;
+  max-height: 260px !important;
+}
+
+.cm-tooltip-autocomplete > ul > li {
+  padding: 3px 9px !important;
+  color: var(--text) !important;
+}
+
+.cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: var(--accent) !important;
+  color: #fff !important;
+}
+
+.cm-completionDetail {
+  margin-left: 8px;
+  color: var(--muted);
+  font-style: normal;
+}
+
+.cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionDetail {
+  color: rgba(255, 255, 255, .78);
+}
+
+/* Signature hint near the cursor */
+.signature-tip {
+  position: fixed;
+  z-index: 90;
+  max-width: min(560px, 86vw);
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 6px 18px rgba(16, 24, 40, .18);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.signature-tip .sig-name { color: var(--accent); }
+.signature-tip .sig-args { color: var(--muted); }
+.signature-tip.hidden { display: none !important; }
+
 .composer-actions {
   max-width: 1180px;
   margin: 7px auto 0;
@@ -613,7 +704,6 @@ pre.error {
 /* ---------- responsive ---------- */
 
 @media (max-width: 1100px) {
-  .workspace { grid-template-columns: 246px minmax(0, 1fr); }
   .side-table th:nth-child(1) { width: 36%; }
   .side-table th:nth-child(2) { width: 34%; }
   .side-table th:nth-child(3) { width: 30%; }
@@ -621,11 +711,13 @@ pre.error {
 
 @media (min-width: 881px) {
   body.sidebar-collapsed .workspace { grid-template-columns: minmax(0, 1fr); }
-  body.sidebar-collapsed .sidebar { display: none; }
+  body.sidebar-collapsed .sidebar,
+  body.sidebar-collapsed .sidebar-resizer { display: none; }
 }
 
 @media (max-width: 880px) {
   .workspace { grid-template-columns: minmax(0, 1fr); }
+  .sidebar-resizer { display: none; }
   .sidebar {
     position: fixed;
     top: 0;

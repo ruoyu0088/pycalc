@@ -58,6 +58,10 @@ python build.py --libs numpy --lang ja --output dist\pycalc-ja.html
 - **一个连续输出块**：不再为每条输入输出生成独立卡片，也没有“成功 / In[n] / 时间”标题栏。所有 `In` / `Out` 依次排在一个可滚动面板里。
 - **点击 `In` / `Out` 插入**：把历史输入代码或输出文本插入到编辑器当前光标位置（不是替换）。只有图片、没有文本的输出会提示无可插入文本。
 - **运行后清空输入框**；`↑` / `↓` 在历史输入之间切换，并在回到最新一条时恢复未提交的草稿。
+- **侧栏宽度可调**：拖动侧栏和主区之间的分隔条即可调整，宽度会记住。窄屏时侧栏变为抽屉，分隔条自动隐藏。
+- **自动补全**：输入变量/函数名时弹出补全列表（也支持 `Ctrl+Space` 手动触发），列表显示函数签名或变量类型；在函数调用的 `(` 之后，光标附近会显示参数 Hint。
+- **括号/引号自动配对**：输入 `(`、`[`、`{`、`'`、`"` 自动补全右侧；选中文字后输入括号/引号会包裹选区。
+- **选中文字高对比**：编辑器选区在亮色/暗色主题下都有明显背景色，不再与普通文本混在一起。
 - **运行键可选**：`Ctrl/Cmd+Enter` 或 `Enter`。选择 `Enter` 时，只有 Python 认为代码“完整”才运行（`def`/`if`/括号未闭合、语法错误等都保持换行）；`Shift+Enter` 始终换行；输入法组合输入时不会误触发。
 - **明暗主题**：CSS、CodeMirror 语法高亮、Matplotlib 默认样式一起切换。首次跟随系统 `prefers-color-scheme`，之后记住选择。Matplotlib 只影响切换主题之后生成的图，历史 PNG 不重绘。
 - **扩展库 checkbox**：输入框上方列出本 HTML 实际打包的扩展库，例如 `numpy (np)`、`pyplot (plt)`、`sympy (sp)`。勾选后自动导入，无需写 `import`。新会话默认只加载 Math，扩展库需要勾选；选择状态保存在会话里，切换会话时恢复。
@@ -80,8 +84,8 @@ python build.py --libs numpy --lang ja --output dist\pycalc-ja.html
 | 内容 | HTML 约 |
 |---|---|
 | 仅标准库 | 10.1 MB（9.6 MiB） |
-| + numpy + sympy | 约 20.2 MB |
-| + numpy + sympy + matplotlib | **33.9 MB / 32.3 MiB**（314.0.7）；**32.6 MB / 31.1 MiB**（0.27.8） |
+| + numpy + sympy | 约 20.3 MB |
+| + numpy + sympy + matplotlib | **34.0 MB / 32.4 MiB**（314.0.7）；**32.7 MB / 31.1 MiB**（0.27.8） |
 
 体积主要来自 wheel（numpy/sympy/matplotlib 及其依赖）和 wasm。`file://` 下浏览器不会发送 `Accept-Encoding`，所以首次打开要解析整个文件；现代桌面 Chrome/Edge 通常 3–6 秒完成启动。
 
@@ -150,6 +154,8 @@ python tests\acceptance.py
 - numpy / sympy / matplotlib 与图片输出；
 - 三语切换、扩展库自动导入与按会话恢复、变量/函数表；
 - 一个连续输出块、点击 In/Out 在光标处插入；
+- 自动补全、函数签名 Hint、括号/引号自动配对、选区高对比；
+- 侧栏拖动宽度并跨刷新记住；
 - Enter / Ctrl+Enter 两种运行键，真实键盘事件下完整性与 `↑` 历史导航；
 - 明暗主题与 Matplotlib 只影响后续图；
 - 多个会话的新建/重命名/删除/切换、变量隔离、刷新恢复；

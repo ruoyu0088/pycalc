@@ -44,6 +44,7 @@ EN: dict[str, str] = {
     "theme.dark": "Dark",
     "theme.toggleTitle": "Toggle light/dark theme",
     "sidebar.toggleTitle": "Show or hide the sidebar",
+    "sidebar.resizeTitle": "Drag to resize the sidebar",
     # Sidebar / tables
     "sidebar.variables": "Variables",
     "sidebar.functions": "Functions",
@@ -203,6 +204,7 @@ ZH: dict[str, str] = {
     "theme.dark": "暗色",
     "theme.toggleTitle": "切换亮色/暗色主题",
     "sidebar.toggleTitle": "显示或隐藏侧栏",
+    "sidebar.resizeTitle": "拖动调整侧栏宽度",
     "sidebar.variables": "变量",
     "sidebar.functions": "函数",
     "sidebar.emptyVariables": "暂无变量。",
@@ -354,6 +356,7 @@ JA: dict[str, str] = {
     "theme.dark": "ダーク",
     "theme.toggleTitle": "ライト/ダークテーマを切り替え",
     "sidebar.toggleTitle": "サイドバーの表示を切り替え",
+    "sidebar.resizeTitle": "ドラッグしてサイドバーの幅を調整",
     "sidebar.variables": "変数",
     "sidebar.functions": "関数",
     "sidebar.emptyVariables": "変数はまだありません。",
