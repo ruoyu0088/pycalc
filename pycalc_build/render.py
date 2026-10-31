@@ -18,16 +18,16 @@ class RenderError(RuntimeError):
 def _check_inline_script(source: str, label: str) -> None:
     lowered = source.lower()
     if "</script" in lowered:
-        raise RenderError(f"{label} 中含有 </script，无法安全内联")
+        raise RenderError(f"{label} contains </script and cannot be inlined safely")
     if "<!--" in source:
-        raise RenderError(f"{label} 中含有 <!--，无法安全内联")
+        raise RenderError(f"{label} contains <!-- and cannot be inlined safely")
 
 
 def _read_text(path: Path, label: str) -> str:
     try:
         return path.read_text(encoding="utf-8")
     except FileNotFoundError as exc:
-        raise RenderError(f"缺少构建资源：{label}（{path}）") from exc
+        raise RenderError(f"Missing build asset: {label} ({path})") from exc
 
 
 def _editor_bundle() -> str:
@@ -43,6 +43,7 @@ def render_page(
     *,
     config: dict,
     assets: dict[str, dict],
+    i18n: dict,
     runtime_mode: str,
     asm_source: str,
     pyodide_js: str,
@@ -69,13 +70,19 @@ def render_page(
 
     config_json = json.dumps(config, ensure_ascii=False, separators=(",", ":"))
     assets_json = json.dumps(assets, ensure_ascii=False, separators=(",", ":"))
-    if "</script" in config_json.lower() or "</script" in assets_json.lower():
-        raise RenderError("配置或资源 JSON 中含有 </script，无法安全内联")
+    i18n_json = json.dumps(i18n, ensure_ascii=False, separators=(",", ":"))
+    if (
+        "</script" in config_json.lower()
+        or "</script" in assets_json.lower()
+        or "</script" in i18n_json.lower()
+    ):
+        raise RenderError("JSON payload contains </script and cannot be inlined")
 
     replacements = {
         "__PYCALC_CSS__": css,
         "__PYCALC_CONFIG__": config_json,
         "__PYCALC_ASSETS__": assets_json,
+        "__PYCALC_I18N__": i18n_json,
         "__PYCALC_GLUE__": glue,
         "__PYCALC_ASM__": asm_block,
         "__PYCALC_PYODIDE_JS__": pyodide_js,
@@ -85,9 +92,9 @@ def render_page(
     page = template
     for token, value in replacements.items():
         if token not in page:
-            raise RenderError(f"模板缺少占位符 {token}")
+            raise RenderError(f"Template is missing placeholder {token}")
         page = page.replace(token, value, 1)
 
     if "__PYCALC_" in page:
-        raise RenderError("模板中仍存在未替换的占位符")
+        raise RenderError("Template still contains unreplaced placeholders")
     return page

@@ -22,6 +22,7 @@ from .config import (
     SCHEMA_VERSION,
 )
 from .embed import encode_file, should_gzip_runtime
+from .i18n import MESSAGES, tr
 from .render import render_page
 from .resolve import Package, package_version_map, resolve_closure
 from .runtime import RuntimeSpec, ensure_runtime, ensure_wheel
@@ -38,6 +39,7 @@ class BuildConfig:
     refresh: bool = False
     gzip_wasm: bool = True
     fetch_only: bool = False
+    lang: str = "en"
 
 
 @dataclass
@@ -73,6 +75,20 @@ def _make_logger(log: Log | None) -> Log:
     return print
 
 
+def available_libraries(packages: Iterable[Package]) -> list[dict]:
+    """Libraries that can be auto-imported by the generated HTML."""
+
+    names = {pkg.name for pkg in packages}
+    result: list[dict] = []
+    if "numpy" in names:
+        result.append({"id": "numpy", "label": "numpy", "alias": "np"})
+    if "matplotlib" in names:
+        result.append({"id": "pyplot", "label": "pyplot", "alias": "plt"})
+    if "sympy" in names:
+        result.append({"id": "sympy", "label": "sympy", "alias": "sp"})
+    return result
+
+
 def _ensure_wheels(
     spec: RuntimeSpec,
     packages: Iterable[Package],
@@ -83,7 +99,7 @@ def _ensure_wheels(
     paths: dict[str, Path] = {}
     for pkg in packages:
         if not pkg.file_name:
-            raise RuntimeError(f"包 {pkg.name} 没有 file_name")
+            raise RuntimeError(f"package {pkg.name} has no file_name")
         path = ensure_wheel(
             spec,
             pkg.file_name,
@@ -91,6 +107,7 @@ def _ensure_wheels(
             offline=config.offline,
             refresh=config.refresh,
             log=log,
+            lang=config.lang,
         )
         paths[pkg.name] = path
     return paths
@@ -104,8 +121,11 @@ def build(config: BuildConfig, log: Log | None = None) -> BuildResult:
     if PERSISTENCE_PACKAGE not in roots:
         roots.append(PERSISTENCE_PACKAGE)
 
+    def t(key: str, **params) -> str:
+        return tr(config.lang, key, **params)
+
     say(f"PyCalc {APP_VERSION} · Pyodide {config.pyodide_version}")
-    say(f"请求的库：{', '.join(user_libs) if user_libs else '（仅标准库）'}")
+    say(t("build.requested", libs=", ".join(user_libs) if user_libs else "-"))
 
     spec = ensure_runtime(
         config.pyodide_version,
@@ -113,21 +133,22 @@ def build(config: BuildConfig, log: Log | None = None) -> BuildResult:
         offline=config.offline,
         refresh=config.refresh,
         log=say,
+        lang=config.lang,
     )
     closure = resolve_closure(spec.lock, roots)
     versions = package_version_map(closure)
-    say(
-        "解析到 "
-        + ", ".join(f"{name} {ver}" for name, ver in versions.items())
-    )
+    say(t("build.resolved", packages=", ".join(f"{name} {ver}" for name, ver in versions.items())))
 
     wheel_paths = _ensure_wheels(spec, closure, config=config, log=say)
-    say(f"已准备 {len(wheel_paths)} 个 wheel，共 "
-        f"{human_size(sum(p.stat().st_size for p in wheel_paths.values()))}")
+    say(t(
+        "build.prepared",
+        count=len(wheel_paths),
+        size=human_size(sum(p.stat().st_size for p in wheel_paths.values())),
+    ))
 
     if config.fetch_only:
         elapsed = time.time() - started
-        say(f"缓存准备完成，用时 {elapsed:.1f}s；未生成 HTML（--fetch-only）。")
+        say(t("build.cacheOnly", duration=f"{elapsed:.1f}"))
         return BuildResult(
             output=None,
             size=0,
@@ -143,24 +164,27 @@ def build(config: BuildConfig, log: Log | None = None) -> BuildResult:
     assets: dict[str, dict] = {}
     warnings: list[str] = []
 
+    say(t("build.inlineRuntime"))
     for name in ("pyodide.asm.wasm", "python_stdlib.zip", "pyodide-lock.json"):
         path = spec.assets[name]
         gzip_ok = config.gzip_wasm and should_gzip_runtime(name)
         assets[name] = encode_file(path, gzip_ok=gzip_ok)
-        encoded_size = len(assets[name]["data"])
-        say(
-            f"内联 {name}: {human_size(path.stat().st_size)}"
-            f" -> {human_size(encoded_size)} base64"
-            + (" (gzip)" if assets[name]["enc"] == "gzip" else "")
-        )
+        say(t(
+            "build.inlineWheel",
+            name=name,
+            raw=human_size(path.stat().st_size),
+            encoded=human_size(len(assets[name]["data"])),
+        ))
 
     for pkg in closure:
         path = wheel_paths[pkg.name]
         assets[pkg.file_name] = encode_file(path, gzip_ok=False)
-        say(
-            f"内联 {pkg.file_name}: {human_size(path.stat().st_size)}"
-            f" -> {human_size(len(assets[pkg.file_name]['data']))} base64"
-        )
+        say(t(
+            "build.inlineWheel",
+            name=pkg.file_name,
+            raw=human_size(path.stat().st_size),
+            encoded=human_size(len(assets[pkg.file_name]["data"])),
+        ))
 
     asm_source = spec.asm_path.read_text(encoding="utf-8")
     pyodide_js = spec.assets["pyodide.js"].read_text(encoding="utf-8")
@@ -174,16 +198,18 @@ def build(config: BuildConfig, log: Log | None = None) -> BuildResult:
         "packages": roots,
         "packageVersions": versions,
         "libs": user_libs,
+        "availableLibraries": available_libraries(closure),
         "gzipWasm": config.gzip_wasm,
         "dbName": APP_DB_NAME,
         "appId": APP_ID,
         "schemaVersion": SCHEMA_VERSION,
     }
 
-    say("渲染单文件 HTML…")
+    say(t("build.render"))
     html = render_page(
         config=page_config,
         assets=assets,
+        i18n=MESSAGES,
         runtime_mode=spec.family,
         asm_source=asm_source,
         pyodide_js=pyodide_js,
@@ -206,15 +232,13 @@ def build(config: BuildConfig, log: Log | None = None) -> BuildResult:
     size = output.stat().st_size
     elapsed = time.time() - started
     say("-" * 64)
-    say(f"输出：{output}")
-    say(f"大小：{size:,} 字节（{human_size(size)}）")
-    say(
-        f"运行时：Pyodide {spec.version} / Python {spec.python_version} / {spec.family}"
-    )
-    say(f"库：{', '.join(f'{k} {v}' for k, v in versions.items())}")
-    say(f"资源数：{len(assets)}；用时 {elapsed:.1f}s")
+    say(t("build.output", path=str(output)))
+    say(t("build.size", bytes=f"{size:,}", human=human_size(size)))
+    say(t("build.runtime", pyodide=spec.version, python=spec.python_version, mode=spec.family))
+    say(t("build.libs", libs=", ".join(f"{k} {v}" for k, v in versions.items())))
+    say(t("build.assets", count=len(assets), duration=f"{elapsed:.1f}"))
     if size > 60 * 1024 * 1024:
-        warnings.append("输出文件超过 60 MB，首次打开会比较慢。")
+        warnings.append("Output is larger than 60 MB; the first open may be slow.")
 
     return BuildResult(
         output=output,

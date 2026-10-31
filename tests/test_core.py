@@ -11,8 +11,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from pycalc_build.api import normalize_libs  # noqa: E402
-from pycalc_build.config import APP_DB_NAME, APP_ID, DEFAULT_PYODIDE_VERSION  # noqa: E402
+from pycalc_build.api import available_libraries  # noqa: E402
+from pycalc_build.config import APP_DB_NAME, APP_ID, DEFAULT_PYODIDE_VERSION, SCHEMA_VERSION  # noqa: E402
 from pycalc_build.embed import encode_asset  # noqa: E402
+from pycalc_build.i18n import MESSAGES  # noqa: E402
 from pycalc_build.render import RenderError, _check_inline_script  # noqa: E402
 from pycalc_build.resolve import resolve_closure  # noqa: E402
 from pycalc_build.runtime import validate_version  # noqa: E402
@@ -63,7 +65,7 @@ class CoreTests(unittest.TestCase):
         self.assertEqual([pkg.name for pkg in closure].count("numpy"), 1)
 
     def test_closure_missing_package_has_hint(self):
-        with self.assertRaisesRegex(ValueError, "没有库"):
+        with self.assertRaisesRegex(ValueError, "not in the Pyodide lock"):
             resolve_closure(LOCK, ["numpyy"])
 
     def test_closure_cycle_detected(self):
@@ -73,7 +75,7 @@ class CoreTests(unittest.TestCase):
                 "b": {"version": "1", "file_name": "b", "depends": ["a"], "package_type": "package"},
             }
         }
-        with self.assertRaisesRegex(ValueError, "循环依赖"):
+        with self.assertRaisesRegex(ValueError, "Circular dependency"):
             resolve_closure(lock, ["a"])
 
     def test_encode_asset_gzip_roundtrip(self):
@@ -104,6 +106,20 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(APP_DB_NAME, "pycalc-app-v1")
         self.assertEqual(APP_ID, "pycalc-app-5c0f9e2a-8f4b-4f1e-9d7a-2b6c1e8f3a41")
         self.assertEqual(DEFAULT_PYODIDE_VERSION, "314.0.7")
+        self.assertEqual(SCHEMA_VERSION, 2)
+
+    def test_translation_keys_are_complete(self):
+        english = set(MESSAGES["en"])
+        for language in ("zh", "ja"):
+            with self.subTest(language=language):
+                self.assertEqual(set(MESSAGES[language]), english)
+
+    def test_available_libraries(self):
+        packages = resolve_closure(LOCK, ["matplotlib"])
+        ids = [lib["id"] for lib in available_libraries(packages)]
+        self.assertIn("numpy", ids)
+        self.assertIn("pyplot", ids)
+        self.assertNotIn("sympy", ids)
 
 
 if __name__ == "__main__":

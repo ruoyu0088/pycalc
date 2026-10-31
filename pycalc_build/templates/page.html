@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -13,33 +13,97 @@ __PYCALC_CSS__
   <header class="topbar">
     <div class="brand">
       <span class="brand-name">PyCalc</span>
-      <span class="brand-sub">离线 Python 计算器</span>
+      <span class="brand-sub" data-i18n="app.subtitle"></span>
     </div>
+
     <div class="session-bar">
-      <label for="session-select" class="session-label">会话</label>
-      <select id="session-select" title="切换会话"></select>
-      <button id="session-new" class="icon-btn" title="新建会话">＋</button>
-      <button id="session-rename" class="icon-btn" title="重命名当前会话">✎</button>
-      <button id="session-delete" class="icon-btn danger" title="删除当前会话">删</button>
+      <span class="session-label" data-i18n="session.label"></span>
+      <select id="session-select" data-i18n-title="session.selectTitle"></select>
+      <button id="session-new" class="icon-btn" data-i18n-title="session.new">＋</button>
+      <button id="session-rename" class="icon-btn" data-i18n-title="session.rename">✎</button>
+      <button id="session-delete" class="icon-btn danger" data-i18n-title="session.delete">×</button>
     </div>
-    <div class="statusbar">
-      <span id="engine-badge" class="badge" title="会话序列化引擎">初始化中</span>
+
+    <div class="top-actions">
+      <label class="select-label">
+        <span data-i18n="language.label"></span>
+        <select id="language-select" class="compact-select">
+          <option value="zh">中文</option>
+          <option value="en">English</option>
+          <option value="ja">日本語</option>
+        </select>
+      </label>
+      <button id="theme-toggle" class="icon-btn" data-i18n-title="theme.toggleTitle">☀</button>
+      <button id="sidebar-toggle" class="icon-btn" data-i18n-title="sidebar.toggleTitle">☰</button>
+      <span id="engine-badge" class="badge"></span>
       <span id="save-status" class="save-status"></span>
     </div>
   </header>
 
-  <main id="history" class="history" aria-live="polite"></main>
+  <div class="workspace" id="workspace">
+    <aside id="sidebar" class="sidebar">
+      <section class="side-card">
+        <h3 data-i18n="sidebar.variables"></h3>
+        <div class="table-wrap">
+          <table class="side-table">
+            <thead>
+              <tr>
+                <th data-i18n="table.name"></th>
+                <th data-i18n="table.type"></th>
+                <th data-i18n="table.value"></th>
+              </tr>
+            </thead>
+            <tbody id="vars-body"></tbody>
+          </table>
+        </div>
+        <div id="vars-empty" class="side-empty" data-i18n="sidebar.emptyVariables"></div>
+      </section>
 
-  <section class="composer">
-    <div class="editor-shell">
-      <textarea id="editor" spellcheck="false" autocomplete="off" autocapitalize="off"
-        placeholder="输入 Python 代码，Ctrl+Enter 运行&#10;&#10;例如：&#10;import numpy as np&#10;np.arange(10).mean()"></textarea>
-    </div>
-    <div class="composer-actions">
-      <span class="hint">Ctrl+Enter / Cmd+Enter 运行</span>
-      <button id="run" class="run-btn" disabled>运行</button>
-    </div>
-  </section>
+      <section class="side-card">
+        <h3 data-i18n="sidebar.functions"></h3>
+        <div class="table-wrap">
+          <table class="side-table">
+            <thead>
+              <tr>
+                <th data-i18n="table.name"></th>
+                <th data-i18n="table.params"></th>
+              </tr>
+            </thead>
+            <tbody id="funcs-body"></tbody>
+          </table>
+        </div>
+        <div id="funcs-empty" class="side-empty" data-i18n="sidebar.emptyFunctions"></div>
+      </section>
+    </aside>
+
+    <main class="main">
+      <div id="console" class="console" aria-live="polite"></div>
+
+      <section class="composer">
+        <div class="library-bar">
+          <span class="library-label" data-i18n="libraries.label"></span>
+          <div id="library-list" class="library-list"></div>
+          <span id="library-note" class="library-note" data-i18n="libraries.hint"></span>
+        </div>
+
+        <div class="editor-shell">
+          <textarea id="editor" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+        </div>
+
+        <div class="composer-actions">
+          <label class="run-key">
+            <span data-i18n="run.label"></span>
+            <select id="run-key" class="compact-select">
+              <option value="ctrl-enter" data-i18n="run.ctrlEnter"></option>
+              <option value="enter" data-i18n="run.enter"></option>
+            </select>
+          </label>
+          <span id="run-hint" class="hint"></span>
+          <button id="run" class="run-btn" data-i18n="run.button" disabled></button>
+        </div>
+      </section>
+    </main>
+  </div>
 
   <div id="banner" class="banner hidden"></div>
   <div id="toast" class="toast hidden"></div>
@@ -47,16 +111,17 @@ __PYCALC_CSS__
   <div id="overlay" class="overlay">
     <div class="overlay-card">
       <div class="spinner" aria-hidden="true"></div>
-      <h2 id="overlay-title">正在启动 PyCalc</h2>
-      <p id="overlay-detail">准备资源…</p>
+      <h2 id="overlay-title"></h2>
+      <p id="overlay-detail"></p>
       <pre id="overlay-error" class="overlay-error hidden"></pre>
-      <button id="overlay-retry" class="secondary hidden">重新加载页面</button>
+      <button id="overlay-retry" class="secondary hidden" data-i18n="overlay.retry"></button>
     </div>
   </div>
 </div>
 
 <script type="application/json" id="pycalc-config">__PYCALC_CONFIG__</script>
 <script type="application/json" id="pycalc-assets">__PYCALC_ASSETS__</script>
+<script type="application/json" id="pycalc-i18n">__PYCALC_I18N__</script>
 <script type="text/python" id="pycalc-glue">__PYCALC_GLUE__</script>
 __PYCALC_ASM__
 <script>__PYCALC_PYODIDE_JS__</script>

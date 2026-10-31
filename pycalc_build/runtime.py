@@ -50,7 +50,7 @@ class RuntimeSpec:
 def validate_version(version: str) -> str:
     version = (version or "").strip()
     if not _VERSION_RE.match(version):
-        raise ValueError(f"非法的 Pyodide 版本号：{version!r}")
+        raise ValueError(f"Invalid Pyodide version: {version!r}")
     return version
 
 
@@ -58,7 +58,7 @@ def _read_lock(path: Path) -> dict:
     with path.open("r", encoding="utf-8") as fh:
         data = json.load(fh)
     if "packages" not in data or not isinstance(data["packages"], dict):
-        raise DownloadError(f"无效的 pyodide-lock.json：{path}")
+        raise DownloadError(f"Invalid pyodide-lock.json: {path}")
     return data
 
 
@@ -69,6 +69,7 @@ def _probe_family(
     offline: bool,
     refresh: bool,
     log: Callable[[str], None] | None,
+    lang: str = "en",
 ) -> str:
     known = KNOWN_VERSIONS.get(version)
     if known:
@@ -82,8 +83,8 @@ def _probe_family(
         return "esm"
     if offline:
         raise OfflineMissing(
-            f"离线模式下无法判断 Pyodide {version} 的运行时结构；"
-            f"缓存目录：{runtime_dir}"
+            f"Cannot determine the runtime layout for Pyodide {version} in offline mode; "
+            f"cache directory: {runtime_dir}"
         )
     try:
         download(
@@ -91,6 +92,7 @@ def _probe_family(
             classic,
             refresh=refresh,
             log=log,
+            lang=lang,
         )
         return "classic"
     except NotFound:
@@ -99,6 +101,7 @@ def _probe_family(
             esm,
             refresh=refresh,
             log=log,
+            lang=lang,
         )
         return "esm"
 
@@ -110,6 +113,7 @@ def ensure_runtime(
     offline: bool = False,
     refresh: bool = False,
     log: Callable[[str], None] | None = None,
+    lang: str = "en",
 ) -> RuntimeSpec:
     version = validate_version(version)
     base = Path(cache_dir) if cache_dir else CACHE_DIR
@@ -127,13 +131,14 @@ def ensure_runtime(
         offline=offline,
         refresh=refresh,
         log=log,
+        lang=lang,
     )
     lock = _read_lock(lock_path)
     info = lock.get("info") or {}
     python_version = str(info.get("python") or KNOWN_VERSIONS.get(version, {}).get("python") or "unknown")
 
     family = _probe_family(
-        version, runtime_dir, offline=offline, refresh=refresh, log=log
+        version, runtime_dir, offline=offline, refresh=refresh, log=log, lang=lang
     )
     asm_name = "pyodide.asm.js" if family == "classic" else "pyodide.asm.mjs"
 
@@ -146,12 +151,13 @@ def ensure_runtime(
             offline=offline,
             refresh=refresh,
             log=log,
+            lang=lang,
         )
         assets[name] = path
 
     say(
         f"Pyodide {version} ({family}, Python {python_version}) "
-        f"缓存于 {runtime_dir}"
+        f"cached in {runtime_dir}"
     )
     return RuntimeSpec(
         version=version,
@@ -174,6 +180,7 @@ def ensure_wheel(
     offline: bool = False,
     refresh: bool = False,
     log: Callable[[str], None] | None = None,
+    lang: str = "en",
 ) -> Path:
     base = Path(base_cache_dir) if base_cache_dir else CACHE_DIR
     dest = base / "wheels" / spec.version / file_name
@@ -183,6 +190,7 @@ def ensure_wheel(
         offline=offline,
         refresh=refresh,
         log=log,
+        lang=lang,
     )
     if sha256:
         try:
@@ -192,7 +200,7 @@ def ensure_wheel(
                 raise
             # A corrupt cache entry should not require a manual cleanup.
             if log:
-                log(f"[重试] {file_name} 的缓存校验失败，删除后重新下载")
+                log(f"[retry] checksum failed for {file_name}; downloading again")
             try:
                 dest.unlink()
             except OSError:
@@ -203,6 +211,7 @@ def ensure_wheel(
                 offline=False,
                 refresh=True,
                 log=log,
+                lang=lang,
             )
             ensure_sha256(dest, sha256, log)
     return dest

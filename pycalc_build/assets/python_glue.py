@@ -1,17 +1,22 @@
 """Python glue executed once inside Pyodide.
 
-Everything here lives in __main__ and is deliberately prefixed with
-``_pycalc_`` so the snapshot filter and the namespace reset can ignore it.
+Everything here lives in a private module namespace and is exposed through
+``_pycalc_*`` functions on ``__main__``.  Application-level identifiers and
+messages are English; translated UI strings live in i18n.py and app.js.
 """
 
 import ast
 import builtins
+import codeop
+import inspect
 import io
 import json
 import os
+import reprlib
 import sys
 import traceback
 import types
+import warnings
 
 import __main__
 
@@ -33,10 +38,28 @@ _PYCALC_SKIP_NAMES = {
 _PYCALC_MAX_SNAPSHOT = 32 * 1024 * 1024
 _PYCALC_MAX_RESULT = 20000
 _PYCALC_MAX_IMAGES = 20
+_PYCALC_MAX_ROWS = 300
+
+_PYCALC_MATH_NAMES = (
+    "sin", "cos", "tan", "asin", "acos", "atan", "atan2",
+    "sinh", "cosh", "tanh", "sqrt", "exp", "log", "log10", "log2",
+    "pow", "factorial", "floor", "ceil", "trunc", "fabs", "degrees",
+    "radians", "hypot", "gcd", "lcm", "pi", "e", "tau", "inf", "nan",
+)
+
+_PYCALC_ALLOWED_LIBRARIES = {"numpy", "pyplot", "sympy"}
 
 _pycalc_engine = None
+_pycalc_auto = {}
 _pycalc_last_failed = []
 _pycalc_last_size = 0
+
+_REPR = reprlib.Repr()
+_REPR.maxstring = 90
+_REPR.maxlist = 5
+_REPR.maxdict = 5
+_REPR.maxother = 90
+_REPR.maxlevel = 2
 
 
 def _pycalc_user_globals():
@@ -56,10 +79,16 @@ def _pycalc_is_file(value):
     return isinstance(value, io.IOBase)
 
 
+def _pycalc_is_auto(name, value):
+    return _pycalc_auto.get(name) is value
+
+
 def _pycalc_snapshotable(name, value):
     if name in _PYCALC_PROTECTED or name in _PYCALC_SKIP_NAMES:
         return False
     if name.startswith("_pycalc_") or name.startswith("__"):
+        return False
+    if _pycalc_is_auto(name, value):
         return False
     if _pycalc_is_module(value) or _pycalc_is_figure(value) or _pycalc_is_file(value):
         return False
@@ -76,14 +105,14 @@ def _pycalc_filtered_globals():
 
 def _pycalc_json_safe(value, depth=0):
     if depth > 30:
-        raise TypeError("嵌套过深")
+        raise TypeError("nesting is too deep")
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, (list, tuple)):
         return [_pycalc_json_safe(item, depth + 1) for item in value]
     if isinstance(value, dict):
         return {str(key): _pycalc_json_safe(item, depth + 1) for key, item in value.items()}
-    raise TypeError(f"无法 JSON 序列化：{type(value).__name__}")
+    raise TypeError(f"cannot JSON-serialize {type(value).__name__}")
 
 
 def _pycalc_detect_engine():
@@ -97,7 +126,7 @@ def _pycalc_detect_engine():
             return x + 1
 
         if cloudpickle.loads(cloudpickle.dumps(_probe))(41) != 42:
-            raise RuntimeError("cloudpickle 自检失败")
+            raise RuntimeError("cloudpickle self-test failed")
         _pycalc_engine = "cloudpickle"
     except Exception:
         _pycalc_engine = "json"
@@ -118,9 +147,7 @@ def _pycalc_self_test():
         if engine == "cloudpickle":
             import cloudpickle
 
-            blob = cloudpickle.dumps(
-                {"array": array, "fn": lambda x: x * 2}
-            )
+            blob = cloudpickle.dumps({"array": array, "fn": lambda x: x * 2})
             restored = cloudpickle.loads(blob)
             info["numpy"] = bool(
                 restored["array"].shape == (2, 3) and restored["fn"](21) == 42
@@ -138,9 +165,133 @@ def _pycalc_self_test():
     return json.dumps(info, ensure_ascii=False)
 
 
-def _pycalc_snapshot_to_file(path):
-    """Serialize the user namespace to *path*; return info as JSON."""
+def _pycalc_bind(name, value, conflicts):
+    """Bind an auto-import name unless the user already owns that name."""
 
+    globals_dict = _pycalc_user_globals()
+    existing = globals_dict.get(name, _PYCALC_MISSING)
+    if existing is not _PYCALC_MISSING and not _pycalc_is_auto(name, existing):
+        if existing is not value:
+            conflicts.append(name)
+            return
+    globals_dict[name] = value
+    _pycalc_auto[name] = value
+
+
+_PYCALC_MISSING = object()
+
+
+def _pycalc_apply_math(conflicts):
+    import math
+
+    _pycalc_bind("math", math, conflicts)
+    for name in _PYCALC_MATH_NAMES:
+        _pycalc_bind(name, getattr(math, name), conflicts)
+
+
+def _pycalc_apply_numpy(conflicts):
+    import numpy
+
+    _pycalc_bind("np", numpy, conflicts)
+
+
+def _pycalc_apply_pyplot(conflicts):
+    import matplotlib
+
+    matplotlib.use("Agg", force=False)
+    import matplotlib.pyplot as plt
+
+    _pycalc_bind("plt", plt, conflicts)
+
+
+def _pycalc_apply_sympy(conflicts):
+    import sympy
+
+    _pycalc_bind("sp", sympy, conflicts)
+
+
+def _pycalc_set_libraries(ids_json):
+    """Apply Math plus the selected extension libraries.
+
+    Returns JSON with ``conflicts`` (names already owned by the user) so the
+    UI can warn instead of silently overwriting user variables.
+    """
+
+    try:
+        selected = json.loads(ids_json)
+    except Exception:
+        selected = []
+    if not isinstance(selected, list):
+        selected = []
+    selected = [str(item) for item in selected if str(item) in _PYCALC_ALLOWED_LIBRARIES]
+
+    globals_dict = _pycalc_user_globals()
+    desired = set(_PYCALC_MATH_NAMES) | {"math"}
+    if "numpy" in selected:
+        desired.add("np")
+    if "pyplot" in selected:
+        desired.add("plt")
+    if "sympy" in selected:
+        desired.add("sp")
+
+    # Drop aliases that are no longer selected, but never touch user values.
+    for name in list(_pycalc_auto):
+        if name in desired:
+            continue
+        value = _pycalc_auto.get(name)
+        if globals_dict.get(name, _PYCALC_MISSING) is value:
+            del globals_dict[name]
+        _pycalc_auto.pop(name, None)
+
+    conflicts: list[str] = []
+    _pycalc_apply_math(conflicts)
+    if "numpy" in selected:
+        _pycalc_apply_numpy(conflicts)
+    if "pyplot" in selected:
+        _pycalc_apply_pyplot(conflicts)
+    if "sympy" in selected:
+        _pycalc_apply_sympy(conflicts)
+
+    return json.dumps(
+        {"applied": selected, "conflicts": conflicts}, ensure_ascii=False
+    )
+
+
+def _pycalc_is_complete(code):
+    """Return whether pressing Enter should execute *code*."""
+
+    if not code or not code.strip():
+        return json.dumps({"complete": False})
+    meaningful = [
+        line for line in code.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    if not meaningful:
+        return json.dumps({"complete": False})
+    try:
+        compiled = codeop.compile_command(code, "<cell>", "exec")
+    except (SyntaxError, OverflowError, ValueError):
+        return json.dumps({"complete": False})
+    return json.dumps({"complete": compiled is not None})
+
+
+def _pycalc_set_plot_theme(theme):
+    try:
+        import matplotlib
+
+        if str(theme) == "dark":
+            matplotlib.style.use("dark_background")
+        else:
+            matplotlib.style.use("default")
+        return json.dumps({"ok": True})
+    except Exception as exc:
+        return json.dumps(
+            {"ok": False, "error": f"{type(exc).__name__}: {exc}"},
+            ensure_ascii=False,
+        )
+
+
+def _pycalc_snapshot_to_file(path):
     global _pycalc_last_failed, _pycalc_last_size
     engine = _pycalc_detect_engine()
     data = _pycalc_filtered_globals()
@@ -208,16 +359,13 @@ def _pycalc_snapshot_to_file(path):
 
 
 def _pycalc_restore_from_file(path):
-    """Restore a snapshot from *path* into __main__; return JSON."""
-
-    global _pycalc_engine
     engine = _pycalc_detect_engine()
     try:
         with open(path, "rb") as fh:
             payload = fh.read()
     except Exception as exc:
         return json.dumps(
-            {"ok": False, "error": f"读取快照失败：{type(exc).__name__}: {exc}", "failed": []},
+            {"ok": False, "error": f"read failed: {type(exc).__name__}: {exc}", "failed": []},
             ensure_ascii=False,
         )
 
@@ -230,7 +378,7 @@ def _pycalc_restore_from_file(path):
             return json.dumps(
                 {
                     "ok": False,
-                    "error": f"反序列化失败：{type(exc).__name__}: {exc}",
+                    "error": f"deserialization failed: {type(exc).__name__}: {exc}",
                     "failed": [],
                 },
                 ensure_ascii=False,
@@ -253,7 +401,8 @@ def _pycalc_restore_from_file(path):
                 {"ok": True, "restored": len(obj), "failed": []}, ensure_ascii=False
             )
         return json.dumps(
-            {"ok": False, "error": "快照格式不是字典", "failed": []}, ensure_ascii=False
+            {"ok": False, "error": "snapshot is not a dict", "failed": []},
+            ensure_ascii=False,
         )
 
     try:
@@ -265,7 +414,7 @@ def _pycalc_restore_from_file(path):
         )
     except Exception as exc:
         return json.dumps(
-            {"ok": False, "error": f"JSON 快照恢复失败：{exc}", "failed": []},
+            {"ok": False, "error": f"JSON restore failed: {exc}", "failed": []},
             ensure_ascii=False,
         )
 
@@ -284,6 +433,7 @@ def _pycalc_reset():
         if name.startswith("_pycalc_"):
             continue
         del globals_dict[name]
+    _pycalc_auto.clear()
 
 
 def _pycalc_replay_imports(codes_json):
@@ -314,13 +464,73 @@ def _pycalc_replay_imports(codes_json):
     return json.dumps({"failed": failed}, ensure_ascii=False)
 
 
+def _pycalc_type_name(value):
+    cls = type(value)
+    # Compact table: int, ndarray, Symbol, ...
+    return str(cls.__qualname__)
+
+
+def _pycalc_safe_repr(value):
+    try:
+        text = _REPR.repr(value)
+    except Exception:
+        return "<unrepresentable>"
+    text = text.replace("\n", " ").replace("\r", " ")
+    if len(text) > 120:
+        text = text[:117] + "..."
+    return text
+
+
+def _pycalc_list_vars():
+    rows = []
+    for name, value in list(_pycalc_user_globals().items()):
+        if not _pycalc_snapshotable(name, value):
+            continue
+        if isinstance(value, (types.FunctionType, types.BuiltinFunctionType, types.MethodType)):
+            continue
+        if inspect.isroutine(value):
+            continue
+        rows.append(
+            {
+                "name": name,
+                "type": _pycalc_type_name(value),
+                "value": _pycalc_safe_repr(value),
+            }
+        )
+    rows.sort(key=lambda row: row["name"].lower())
+    return json.dumps(rows[:_PYCALC_MAX_ROWS], ensure_ascii=False)
+
+
+def _pycalc_list_funcs():
+    rows = []
+    for name, value in list(_pycalc_user_globals().items()):
+        if name in _PYCALC_PROTECTED or name in _PYCALC_SKIP_NAMES:
+            continue
+        if name.startswith("_pycalc_") or name.startswith("__"):
+            continue
+        if _pycalc_is_auto(name, value):
+            continue
+        if not isinstance(value, types.FunctionType):
+            continue
+        module = getattr(value, "__module__", None)
+        if module not in ("__main__", None):
+            continue
+        try:
+            params = str(inspect.signature(value))
+        except Exception:
+            params = "(?)"
+        rows.append({"name": name, "params": params})
+    rows.sort(key=lambda row: row["name"].lower())
+    return json.dumps(rows[:_PYCALC_MAX_ROWS], ensure_ascii=False)
+
+
 def _pycalc_truncate(text):
     if text is None:
         return None
     if len(text) <= _PYCALC_MAX_RESULT:
         return text
     omitted = len(text) - _PYCALC_MAX_RESULT
-    return text[:_PYCALC_MAX_RESULT] + f"\n…（已截断 {omitted} 个字符）"
+    return text[:_PYCALC_MAX_RESULT] + f"\n... ({omitted} characters omitted)"
 
 
 def _pycalc_run(code):
@@ -334,8 +544,6 @@ def _pycalc_run(code):
             expression = ast.Expression(body=tree.body[-1].value)
             value = eval(compile(expression, "<cell>", "eval"), globals_dict)
             if value is None:
-                # Like Jupyter/IPython: a trailing expression evaluating to
-                # None does not produce an Out[] cell.
                 result = None
             else:
                 globals_dict["_"] = value
@@ -386,13 +594,11 @@ def _pycalc_namespace_info():
     )
 
 
-# Set the backend before any user code imports pyplot.
+# Set the backend before user code imports pyplot.
 os.environ.setdefault("MPLBACKEND", "Agg")
 try:
-    import warnings
-
-    # We capture figures ourselves; Agg's plt.show() warning is just noise.
     warnings.filterwarnings("ignore", message=".*FigureCanvasAgg is non-interactive.*")
+    warnings.filterwarnings("ignore", message=".*missing from font.*")
 except Exception:
     pass
 try:

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Callable
 
 from .config import USER_AGENT
+from .i18n import tr
 
 
 class DownloadError(RuntimeError):
@@ -48,10 +49,8 @@ def ensure_sha256(path: Path, expected: str, log: Callable[[str], None] | None =
     actual = sha256_file(path)
     if actual.lower() != expected.lower():
         if log:
-            log(f"[校验失败] {path.name}: {actual[:16]}… != {expected[:16]}…")
-        raise DownloadError(
-            f"校验失败：{path} 的 SHA256 与 lock 文件不一致（{actual} != {expected}）"
-        )
+            log(f"[checksum failed] {path.name}: {actual[:16]}... != {expected[:16]}...")
+        raise DownloadError(f"Checksum mismatch for {path}: {actual} != {expected}")
 
 
 def download(
@@ -63,6 +62,7 @@ def download(
     timeout: float = 60.0,
     retries: int = 3,
     log: Callable[[str], None] | None = None,
+    lang: str = "en",
 ) -> Path:
     """Download *url* to *dest* unless it is already cached.
 
@@ -75,8 +75,8 @@ def download(
         return dest
     if offline:
         raise OfflineMissing(
-            f"离线模式下缺少缓存文件：{dest}\n"
-            f"请先在联网状态运行一次构建，或去掉 --offline。"
+            f"Missing cached file in offline mode: {dest}\n"
+            f"Run one online build first, or remove --offline."
         )
 
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -86,7 +86,7 @@ def download(
     for attempt in range(1, retries + 1):
         try:
             if log:
-                log(f"下载 {url} …")
+                log(tr(lang, "build.downloading", url=url))
             request = urllib.request.Request(
                 url,
                 headers={
@@ -108,16 +108,16 @@ def download(
                         received += len(chunk)
                 if expected is not None and received != expected:
                     raise DownloadError(
-                        f"下载不完整：{url}（收到 {received} / {expected} 字节）"
+                        f"Incomplete download: {url} ({received} / {expected} bytes)"
                     )
             os.replace(tmp, dest)
             if log:
-                log(f"  -> {dest.name} ({human_size(dest.stat().st_size)})")
+                log(tr(lang, "build.downloaded", name=dest.name, size=human_size(dest.stat().st_size)))
             return dest
         except urllib.error.HTTPError as exc:
             last_error = exc
             if exc.code in (404, 410):
-                raise NotFound(f"资源不存在（HTTP {exc.code}）：{url}") from exc
+                raise NotFound(f"Resource not found (HTTP {exc.code}): {url}") from exc
             if exc.code < 500 or attempt == retries:
                 break
         except (urllib.error.URLError, TimeoutError, DownloadError, OSError) as exc:
@@ -132,4 +132,4 @@ def download(
                     pass
         time.sleep(min(2.0 * attempt, 6.0))
 
-    raise DownloadError(f"下载失败：{url}\n原因：{last_error}")
+    raise DownloadError(f"Download failed: {url}\nReason: {last_error}")

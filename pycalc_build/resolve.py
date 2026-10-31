@@ -62,13 +62,13 @@ def resolve_closure(lock: dict, roots: Iterable[str]) -> list[Package]:
         if name in state:
             if state[name] == 0:
                 cycle = " -> ".join(chain + (name,))
-                raise ValueError(f"pyodide-lock.json 中存在循环依赖：{cycle}")
+                raise ValueError(f"Circular dependency in pyodide-lock.json: {cycle}")
             return
         data = packages.get(name)
         if data is None:
             hint = suggest_name(name, packages)
-            extra = f"；你是不是想找：{hint}" if hint else ""
-            raise ValueError(f"Pyodide lock 中没有库 {name!r}{extra}")
+            extra = f"; did you mean: {hint}" if hint else ""
+            raise ValueError(f"Package {name!r} is not in the Pyodide lock{extra}")
         state[name] = 0
         pkg = Package.from_lock(name, data)
         for dep in pkg.depends:

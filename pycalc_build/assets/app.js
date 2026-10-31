@@ -1,10 +1,6 @@
 (() => {
   'use strict';
 
-  // ---------------------------------------------------------------------
-  // Small helpers
-  // ---------------------------------------------------------------------
-
   const $ = (id) => document.getElementById(id);
 
   function el(tag, className, text) {
@@ -16,7 +12,10 @@
 
   function fmtTime(ts) {
     try {
-      return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const locale = I18n.lang === 'zh' ? 'zh-CN' : I18n.lang === 'ja' ? 'ja-JP' : 'en-US';
+      return new Date(ts).toLocaleTimeString(locale, {
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+      });
     } catch (_) {
       return '';
     }
@@ -24,22 +23,11 @@
 
   function fmtDateTime(ts) {
     try {
-      return new Date(ts).toLocaleString();
+      const locale = I18n.lang === 'zh' ? 'zh-CN' : I18n.lang === 'ja' ? 'ja-JP' : 'en-US';
+      return new Date(ts).toLocaleString(locale);
     } catch (_) {
       return '';
     }
-  }
-
-  function humanBytes(n) {
-    if (!Number.isFinite(n)) return '';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    let value = n;
-    let i = 0;
-    while (value >= 1024 && i < units.length - 1) {
-      value /= 1024;
-      i += 1;
-    }
-    return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
   }
 
   function uuid() {
@@ -53,34 +41,199 @@
     });
   }
 
+  // ---------------------------------------------------------------------
+  // Configuration and i18n
+  // ---------------------------------------------------------------------
+
+  const CFG = JSON.parse($('pycalc-config').textContent);
+  const ASSETS = JSON.parse($('pycalc-assets').textContent);
+  const MESSAGES = JSON.parse($('pycalc-i18n').textContent);
+  window.__pycalcVersion = {
+    app: CFG.appVersion,
+    pyodide: CFG.pyodideVersion,
+    python: CFG.pythonVersion,
+    runtime: CFG.runtimeMode,
+  };
+  const PY_GLUE_SOURCE = $('pycalc-glue').textContent;
+  const AVAILABLE_LIBS = Array.isArray(CFG.availableLibraries) ? CFG.availableLibraries : [];
+  const AVAILABLE_LIB_IDS = new Set(AVAILABLE_LIBS.map((lib) => lib.id));
+
+  function detectLanguage() {
+    const nav = String(navigator.language || 'en').toLowerCase();
+    if (nav.startsWith('ja')) return 'ja';
+    if (nav.startsWith('zh')) return 'zh';
+    return 'en';
+  }
+
+  function detectTheme() {
+    try {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    } catch (_) {
+      return 'light';
+    }
+  }
+
+  const I18n = {
+    lang: detectLanguage(),
+    messages: MESSAGES,
+    t(key, params) {
+      const table = this.messages[this.lang] || this.messages.en || {};
+      let text = table[key];
+      if (text === undefined) text = (this.messages.en || {})[key];
+      if (text === undefined) text = key;
+      if (params) {
+        for (const [name, value] of Object.entries(params)) {
+          text = text.split(`{${name}}`).join(String(value));
+        }
+      }
+      return text;
+    },
+    setLanguage(lang) {
+      this.lang = MESSAGES[lang] ? lang : 'en';
+      document.documentElement.lang = this.lang;
+      $('language-select').value = this.lang;
+      this.applyStatic();
+    },
+    applyStatic(root = document) {
+      root.querySelectorAll('[data-i18n]').forEach((node) => {
+        node.textContent = this.t(node.dataset.i18n);
+      });
+      root.querySelectorAll('[data-i18n-title]').forEach((node) => {
+        node.title = this.t(node.dataset.i18nTitle);
+      });
+      root.querySelectorAll('[data-i18n-placeholder]').forEach((node) => {
+        node.placeholder = this.t(node.dataset.i18nPlaceholder);
+      });
+    },
+  };
+
+  const DEFAULT_UI = {
+    language: detectLanguage(),
+    theme: detectTheme(),
+    runKey: 'ctrl-enter',
+    sidebarHidden: false,
+  };
+
+  const state = {
+    storage: null,
+    sessions: [],
+    activeId: null,
+    activeName: '',
+    history: [],
+    executionCount: 0,
+    draft: '',
+    libraries: [],
+    namespace: null,
+    namespaceMeta: null,
+    engine: 'unknown',
+    busy: false,
+    running: false,
+    ready: false,
+    saveChain: Promise.resolve(),
+    saveTimer: null,
+    draftTimer: null,
+    objectUrls: [],
+    activeOutput: null,
+    historyNav: { index: null, draft: '' },
+    suppressEditorSave: false,
+    ui: { ...DEFAULT_UI },
+    status: null,
+    overlay: null,
+    mobileSidebarOpen: false,
+  };
+
+  let editor = null;
+  let pyodide = null;
+  let py = null;
+
+  // ---------------------------------------------------------------------
+  // Small UI helpers
+  // ---------------------------------------------------------------------
+
   let toastTimer = null;
-  function toast(message) {
+  function toast(key, params) {
     const node = $('toast');
-    node.textContent = message;
+    node.textContent = I18n.t(key, params);
     node.classList.remove('hidden');
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(() => node.classList.add('hidden'), 4200);
   }
 
   let bannerTimer = null;
-  function banner(message, kind = 'warn', sticky = false) {
+  function banner(key, params, kind = 'warn', sticky = false) {
     const node = $('banner');
-    node.textContent = message;
+    node.textContent = I18n.t(key, params);
     node.className = `banner ${kind === 'bad' ? 'bad' : kind === 'good' ? 'good' : ''}`;
     node.classList.remove('hidden');
     if (bannerTimer) clearTimeout(bannerTimer);
-    if (!sticky) {
-      bannerTimer = setTimeout(() => node.classList.add('hidden'), 9000);
+    if (!sticky) bannerTimer = setTimeout(() => node.classList.add('hidden'), 9000);
+  }
+
+  function hideBanner() {
+    $('banner').classList.add('hidden');
+  }
+
+  function setStatus(key, params) {
+    state.status = key ? { key, params: params || {} } : null;
+    renderStatus();
+  }
+
+  function renderStatus() {
+    if (!state.status) {
+      $('save-status').textContent = '';
+      return;
+    }
+    $('save-status').textContent = I18n.t(state.status.key, state.status.params);
+  }
+
+  function setEngine(engine) {
+    state.engine = engine;
+    renderEngineBadge();
+  }
+
+  function renderEngineBadge() {
+    const node = $('engine-badge');
+    if (state.engine === 'cloudpickle') {
+      node.textContent = I18n.t('engine.cloudpickle');
+      node.className = 'badge good';
+      node.title = I18n.t('engine.cloudpickleTitle');
+    } else if (state.engine === 'json') {
+      node.textContent = I18n.t('engine.json');
+      node.className = 'badge warn';
+      node.title = I18n.t('engine.jsonTitle');
+    } else {
+      node.textContent = I18n.t('engine.initializing');
+      node.className = 'badge';
+      node.title = '';
     }
   }
 
-  function setOverlay(title, detail, error) {
-    $('overlay').classList.remove('hidden');
-    $('overlay-title').textContent = title || '正在启动 PyCalc';
-    $('overlay-detail').textContent = detail || '';
+  function setOverlay(titleKey, detailKey, params, error) {
+    state.overlay = {
+      titleKey, detailKey, params: params || {}, error: error || '',
+    };
+    renderOverlay();
+  }
+
+  function setStage(detailKey, params) {
+    if (!state.overlay) return;
+    state.overlay.detailKey = detailKey;
+    state.overlay.params = params || {};
+    renderOverlay();
+  }
+
+  function renderOverlay() {
+    const node = $('overlay');
+    if (!state.overlay) {
+      node.classList.add('hidden');
+      return;
+    }
+    node.classList.remove('hidden');
+    $('overlay-title').textContent = I18n.t(state.overlay.titleKey, state.overlay.params);
+    $('overlay-detail').textContent = I18n.t(state.overlay.detailKey, state.overlay.params);
     const err = $('overlay-error');
-    if (error) {
-      err.textContent = error;
+    if (state.overlay.error) {
+      err.textContent = state.overlay.error;
       err.classList.remove('hidden');
       $('overlay-retry').classList.remove('hidden');
     } else {
@@ -90,33 +243,18 @@
   }
 
   function hideOverlay() {
+    state.overlay = null;
     $('overlay').classList.add('hidden');
   }
 
-  function setStage(detail) {
-    $('overlay-detail').textContent = detail;
-  }
-
   // ---------------------------------------------------------------------
-  // Build-time configuration and inlined assets
+  // Inlined assets and fetch shim
   // ---------------------------------------------------------------------
-
-  const CFG = JSON.parse($('pycalc-config').textContent);
-  const ASSETS = JSON.parse($('pycalc-assets').textContent);
-  const PY_GLUE_SOURCE = $('pycalc-glue').textContent;
-  window.__pycalcVersion = {
-    app: CFG.appVersion,
-    pyodide: CFG.pyodideVersion,
-    python: CFG.pythonVersion,
-    runtime: CFG.runtimeMode,
-  };
 
   const decoded = new Map();
 
   function b64ToBytes(data) {
-    if (typeof Uint8Array.fromBase64 === 'function') {
-      return Uint8Array.fromBase64(data);
-    }
+    if (typeof Uint8Array.fromBase64 === 'function') return Uint8Array.fromBase64(data);
     const raw = atob(data);
     const out = new Uint8Array(raw.length);
     for (let i = 0; i < raw.length; i += 1) out[i] = raw.charCodeAt(i);
@@ -126,11 +264,11 @@
   async function decodeAsset(name) {
     if (decoded.has(name)) return decoded.get(name);
     const asset = ASSETS[name];
-    if (!asset) throw new Error(`缺少内联资源：${name}`);
+    if (!asset) throw new Error(`missing inline asset: ${name}`);
     let bytes = b64ToBytes(asset.data);
     if (asset.enc === 'gzip') {
       if (typeof DecompressionStream !== 'function') {
-        throw new Error('当前浏览器不支持 DecompressionStream，无法解压内联的 wasm。');
+        throw new Error('this browser does not support DecompressionStream');
       }
       const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
       bytes = new Uint8Array(await new Response(stream).arrayBuffer());
@@ -164,8 +302,7 @@
   }
 
   function installFetchShim() {
-    const realFetch = window.fetch.bind(window);
-    window.fetch = async (input, init) => {
+    window.fetch = async (input) => {
       const url = normalizeUrl(input);
       const name = baseName(url);
       if (Object.prototype.hasOwnProperty.call(ASSETS, name)) {
@@ -179,22 +316,15 @@
           },
         });
       }
-      // The whole point of the single-file build is that nothing external is
-      // requested.  Make a miss loud instead of silently going online.
       console.warn('[PyCalc] blocked external request:', url);
-      throw new Error(`PyCalc 单文件模式下不允许外部请求：${url}`);
+      throw new Error(`external request blocked: ${url}`);
     };
-    // Expose for debugging without changing behaviour.
-    window.__pycalcRealFetch = realFetch;
   }
 
   // ---------------------------------------------------------------------
-  // Runtime boot
+  // Runtime
   // ---------------------------------------------------------------------
 
-  let pyodide = null;
-  let py = null; // bound glue functions
-  let activeOutput = null;
   const streamDecoders = {
     stdout: new TextDecoder('utf-8'),
     stderr: new TextDecoder('utf-8'),
@@ -202,10 +332,9 @@
 
   function dispatchStream(kind, text) {
     if (!text) return;
-    if (activeOutput && typeof activeOutput[kind] === 'function') {
-      activeOutput[kind](text);
+    if (state.activeOutput && typeof state.activeOutput[kind] === 'function') {
+      state.activeOutput[kind](text);
     } else {
-      // Initialisation messages are useful in devtools but not in the UI.
       console.log(`[pyodide:${kind}]`, text);
     }
   }
@@ -218,8 +347,8 @@
   }
 
   async function loadRuntime() {
-    setStage('加载 Pyodide 运行时（首次约 2 秒）…');
-    await new Promise((resolve) => requestAnimationFrame(resolve));
+    setStage('overlay.runtime', { version: CFG.pyodideVersion, python: CFG.pythonVersion });
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     let createPyodideModule;
     if (CFG.runtimeMode === 'esm') {
@@ -233,6 +362,7 @@
       }
     }
 
+    setStage('overlay.packages', { libs: (CFG.libs || []).join(', ') || 'cloudpickle' });
     const options = {
       indexURL: 'https://pycalc.local/',
       packages: CFG.packages,
@@ -240,10 +370,7 @@
       stderr: (text) => dispatchStream('stderr', text),
     };
     if (createPyodideModule) options.createPyodideModule = createPyodideModule;
-
     pyodide = await loadPyodide(options);
-    // `write` preserves the exact bytes (including newlines).  `batched`
-    // strips line endings, which would turn print(1); print(2) into "12".
     pyodide.setStdout({
       write: (buffer) => {
         dispatchStream('stdout', streamDecoders.stdout.decode(buffer, { stream: true }));
@@ -257,7 +384,7 @@
       },
     });
 
-    setStage('初始化 Python 会话…');
+    setStage('overlay.init');
     pyodide.globals.set('_pycalc_glue_source', PY_GLUE_SOURCE);
     pyodide.runPython(`
 import types as _pycalc_types
@@ -268,6 +395,8 @@ for _pycalc_name in (
     '_pycalc_run', '_pycalc_figures', '_pycalc_self_test',
     '_pycalc_reset', '_pycalc_snapshot_to_file', '_pycalc_restore_from_file',
     '_pycalc_replay_imports', '_pycalc_namespace_info',
+    '_pycalc_set_libraries', '_pycalc_is_complete',
+    '_pycalc_list_vars', '_pycalc_list_funcs', '_pycalc_set_plot_theme',
 ):
     setattr(_pycalc_main, _pycalc_name, getattr(_pycalc_mod, _pycalc_name))
 del _pycalc_name
@@ -285,11 +414,16 @@ del _pycalc_glue_source
       restore: pyodide.globals.get('_pycalc_restore_from_file'),
       replayImports: pyodide.globals.get('_pycalc_replay_imports'),
       namespaceInfo: pyodide.globals.get('_pycalc_namespace_info'),
+      setLibraries: pyodide.globals.get('_pycalc_set_libraries'),
+      isComplete: pyodide.globals.get('_pycalc_is_complete'),
+      listVars: pyodide.globals.get('_pycalc_list_vars'),
+      listFuncs: pyodide.globals.get('_pycalc_list_funcs'),
+      setPlotTheme: pyodide.globals.get('_pycalc_set_plot_theme'),
     };
   }
 
   // ---------------------------------------------------------------------
-  // Storage: IndexedDB, with an in-memory fallback
+  // Storage
   // ---------------------------------------------------------------------
 
   const DB_VERSION = 1;
@@ -300,7 +434,7 @@ del _pycalc_glue_source
   function openDb() {
     return new Promise((resolve, reject) => {
       if (!window.indexedDB) {
-        reject(new Error('浏览器不支持 IndexedDB'));
+        reject(new Error('IndexedDB is not available'));
         return;
       }
       const request = indexedDB.open(CFG.dbName, DB_VERSION);
@@ -317,26 +451,25 @@ del _pycalc_glue_source
         }
       };
       request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error || new Error('打开 IndexedDB 失败'));
-      request.onblocked = () => reject(new Error('IndexedDB 被另一个页面阻塞，请关闭其他 PyCalc 页面'));
+      request.onerror = () => reject(request.error || new Error('could not open IndexedDB'));
+      request.onblocked = () => reject(new Error('IndexedDB is blocked by another page'));
     });
   }
 
-  function txPromise(db, storeNames, mode, action) {
+  function txPromise(db, stores, mode, action) {
     return new Promise((resolve, reject) => {
       let tx;
       try {
-        tx = db.transaction(storeNames, mode);
+        tx = db.transaction(stores, mode);
       } catch (err) {
         reject(err);
         return;
       }
-      let result;
-      tx.oncomplete = () => resolve(result);
-      tx.onerror = () => reject(tx.error || new Error('IndexedDB 事务失败'));
-      tx.onabort = () => reject(tx.error || new Error('IndexedDB 事务被中止'));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('IndexedDB transaction failed'));
+      tx.onabort = () => reject(tx.error || new Error('IndexedDB transaction aborted'));
       try {
-        result = action(tx);
+        action(tx);
       } catch (err) {
         try { tx.abort(); } catch (_) { /* ignore */ }
         reject(err);
@@ -364,8 +497,7 @@ del _pycalc_glue_source
 
   async function listIndex(db) {
     const tx = db.transaction(STORE_INDEX, 'readonly');
-    const rows = await reqValue(tx.objectStore(STORE_INDEX).getAll());
-    return rows || [];
+    return (await reqValue(tx.objectStore(STORE_INDEX).getAll())) || [];
   }
 
   async function getSessionData(db, id) {
@@ -420,9 +552,7 @@ del _pycalc_glue_source
     const existing = await listIndex(db);
     if (!appMeta) {
       if (existing.length > 0) {
-        throw new Error(
-          `数据库 ${CFG.dbName} 中已有其他程序的数据（缺少 PyCalc 标识），为避免混用已停止。`
-        );
+        throw new Error(I18n.t('banner.foreignDb', { db: CFG.dbName }));
       }
       await putMeta(db, {
         key: 'app',
@@ -431,19 +561,15 @@ del _pycalc_glue_source
         createdAt: Date.now(),
       });
     } else if (appMeta.appId !== CFG.appId) {
-      throw new Error(
-        `数据库 ${CFG.dbName} 属于其他程序（appId 不匹配），为避免混用已停止。`
-      );
+      throw new Error(I18n.t('banner.foreignDb', { db: CFG.dbName }));
     } else {
-      const storedSchema = Number(appMeta.schemaVersion || 1);
-      if (storedSchema > CFG.schemaVersion) {
-        throw new Error(
-          `会话数据库由更新版本的 PyCalc 创建（schema ${storedSchema} > ${CFG.schemaVersion}），请使用新版 HTML。`
-        );
+      const stored = Number(appMeta.schemaVersion || 1);
+      if (stored > CFG.schemaVersion) {
+        throw new Error(I18n.t('banner.schemaNewer', {
+          stored, current: CFG.schemaVersion,
+        }));
       }
-      if (storedSchema < CFG.schemaVersion) {
-        // Future migrations can run here.  For now only the version marker
-        // changes, so v1 data remains fully readable.
+      if (stored < CFG.schemaVersion) {
         appMeta.schemaVersion = CFG.schemaVersion;
         appMeta.updatedAt = Date.now();
         await putMeta(db, appMeta);
@@ -452,262 +578,75 @@ del _pycalc_glue_source
     return new IdbStorage(db);
   }
 
-  // ---------------------------------------------------------------------
-  // Application state
-  // ---------------------------------------------------------------------
-
-  const state = {
-    storage: null,
-    sessions: [],
-    activeId: null,
-    activeName: '',
-    history: [],
-    executionCount: 0,
-    draft: '',
-    namespace: null,
-    namespaceMeta: null,
-    engine: 'unknown',
-    busy: false,
-    running: false,
-    suppressEditorSave: false,
-    ready: false,
-    saveChain: Promise.resolve(),
-    saveTimer: null,
-    draftTimer: null,
-    objectUrls: [],
-    activeOutput: null,
-  };
-
-  let editor = null;
-
-  // ---------------------------------------------------------------------
-  // History UI
-  // ---------------------------------------------------------------------
-
-  function revokeObjectUrls() {
-    for (const url of state.objectUrls) {
-      try { URL.revokeObjectURL(url); } catch (_) { /* ignore */ }
+  async function loadUiMeta() {
+    let meta = null;
+    try {
+      meta = await state.storage.getMeta('ui');
+    } catch (err) {
+      console.warn('could not read UI settings', err);
     }
-    state.objectUrls = [];
-  }
-
-  function makeImage(blob, mime) {
-    const img = document.createElement('img');
-    const url = URL.createObjectURL(blob);
-    state.objectUrls.push(url);
-    img.src = url;
-    img.alt = '图表输出';
-    img.loading = 'lazy';
-    img.addEventListener('load', () => scrollToBottom());
-    if (mime) img.dataset.mime = mime;
-    return img;
-  }
-
-  function makeCell(entry) {
-    const cell = el('div', 'cell');
-    const head = el('div', 'cell-head');
-    head.appendChild(el('span', 'cell-status ' + (entry.status === 'error' ? 'fail' : 'ok'),
-      entry.status === 'error' ? '异常' : '成功'));
-    head.appendChild(el('span', '', `In [${entry.n}]`));
-    head.appendChild(el('span', 'time', fmtTime(entry.ts)));
-    cell.appendChild(head);
-
-    const body = el('div', 'cell-body');
-    const inputRow = el('div', 'io-row');
-    inputRow.appendChild(el('span', 'prompt', `In [${entry.n}]:`));
-    inputRow.appendChild(el('pre', 'code', entry.code));
-    body.appendChild(inputRow);
-
-    if (entry.stdout) {
-      const row = el('div', 'io-row io-block');
-      row.appendChild(el('span', 'prompt', ''));
-      row.appendChild(el('pre', 'stream', entry.stdout));
-      body.appendChild(row);
+    if (!meta) {
+      meta = { key: 'ui', ...DEFAULT_UI };
+      try { await state.storage.putMeta(meta); } catch (err) { console.warn(err); }
     }
-    if (entry.stderr) {
-      const row = el('div', 'io-row io-block');
-      row.appendChild(el('span', 'prompt', ''));
-      row.appendChild(el('pre', 'stream stderr', entry.stderr));
-      body.appendChild(row);
-    }
-    if (entry.result !== null && entry.result !== undefined) {
-      const row = el('div', 'io-row io-block');
-      row.appendChild(el('span', 'prompt out', `Out[${entry.n}]:`));
-      row.appendChild(el('pre', 'result', entry.result));
-      body.appendChild(row);
-    }
-    if (entry.error) {
-      body.appendChild(el('pre', 'error', entry.error));
-    }
-    if (entry.images && entry.images.length) {
-      const images = el('div', 'images');
-      for (const image of entry.images) {
-        if (image && image.blob) images.appendChild(makeImage(image.blob, image.mime));
-      }
-      if (images.childNodes.length) body.appendChild(images);
-    }
-    cell.appendChild(body);
-    return cell;
-  }
-
-  function emptyState() {
-    const node = el('div', 'empty-state');
-    const p1 = el('p');
-    p1.appendChild(el('strong', '', '开始计算'));
-    node.appendChild(p1);
-    const p2 = el('p', '', '在下方输入 Python 代码，按 Ctrl+Enter（macOS 用 Cmd+Enter）运行。');
-    node.appendChild(p2);
-    const p3 = el('p', '', 'numpy / sympy / matplotlib 已离线打包；每个会话拥有独立的历史与变量。');
-    node.appendChild(p3);
-    return node;
-  }
-
-  function setHistory(history) {
-    revokeObjectUrls();
-    const host = $('history');
-    host.innerHTML = '';
-    if (!history.length) {
-      host.appendChild(emptyState());
-      return;
-    }
-    for (const entry of history) host.appendChild(makeCell(entry));
-    requestAnimationFrame(() => scrollToBottom());
-  }
-
-  function ensureHistoryHost() {
-    const host = $('history');
-    const empty = host.querySelector('.empty-state');
-    if (empty) empty.remove();
-  }
-
-  function scrollToBottom() {
-    const host = $('history');
-    host.scrollTop = host.scrollHeight;
-  }
-
-  function maybeScroll() {
-    const host = $('history');
-    if (host.scrollHeight - host.scrollTop - host.clientHeight < 220) {
-      host.scrollTop = host.scrollHeight;
-    }
-  }
-
-  function createLiveCell(entry) {
-    ensureHistoryHost();
-    const cell = el('div', 'cell running');
-    const head = el('div', 'cell-head');
-    head.appendChild(el('span', 'cell-status', '运行中…'));
-    head.appendChild(el('span', '', `In [${entry.n}]`));
-    head.appendChild(el('span', 'time', fmtTime(entry.ts)));
-    cell.appendChild(head);
-
-    const body = el('div', 'cell-body');
-    const inputRow = el('div', 'io-row');
-    inputRow.appendChild(el('span', 'prompt', `In [${entry.n}]:`));
-    inputRow.appendChild(el('pre', 'code', entry.code));
-    body.appendChild(inputRow);
-
-    const stdoutRow = el('div', 'io-row io-block hidden');
-    stdoutRow.appendChild(el('span', 'prompt', ''));
-    const stdoutEl = el('pre', 'stream');
-    stdoutRow.appendChild(stdoutEl);
-    body.appendChild(stdoutRow);
-
-    const stderrRow = el('div', 'io-row io-block hidden');
-    stderrRow.appendChild(el('span', 'prompt', ''));
-    const stderrEl = el('pre', 'stream stderr');
-    stderrRow.appendChild(stderrEl);
-    body.appendChild(stderrRow);
-
-    cell.appendChild(body);
-    $('history').appendChild(cell);
-    maybeScroll();
-
-    const append = (row, node, text) => {
-      row.classList.remove('hidden');
-      node.textContent += text;
-      maybeScroll();
-    };
-
+    const language = MESSAGES[meta.language] ? meta.language : DEFAULT_UI.language;
+    const theme = meta.theme === 'dark' ? 'dark' : 'light';
+    const runKey = meta.runKey === 'enter' ? 'enter' : 'ctrl-enter';
     return {
-      cell,
-      stdout(text) { append(stdoutRow, stdoutEl, text); },
-      stderr(text) { append(stderrRow, stderrEl, text); },
-      finish(finalEntry) {
-        const stored = makeCell(finalEntry);
-        cell.replaceWith(stored);
-        requestAnimationFrame(() => scrollToBottom());
-      },
+      ...DEFAULT_UI,
+      ...meta,
+      language,
+      theme,
+      runKey,
+      sidebarHidden: Boolean(meta.sidebarHidden),
     };
   }
 
-  function setActiveOutput(handler) {
-    activeOutput = handler;
-    state.activeOutput = handler;
-  }
-
-  // ---------------------------------------------------------------------
-  // Editor abstraction (textarea now, CodeMirror when bundled)
-  // ---------------------------------------------------------------------
-
-  function createEditor() {
-    const textarea = $('editor');
-    if (window.PyCalcEditor && typeof window.PyCalcEditor.create === 'function') {
-      const host = el('div', 'cm-host');
-      const initial = textarea.value;
-      textarea.replaceWith(host);
-      const cm = window.PyCalcEditor.create(host, {
-        value: initial,
-        onChange: (value) => {
-          state.draft = value;
-          if (!state.suppressEditorSave) scheduleSave({ snapshot: false, delay: 900 });
-        },
+  async function saveUiMeta() {
+    if (!state.storage) return;
+    try {
+      await state.storage.putMeta({
+        key: 'ui',
+        language: state.ui.language,
+        theme: state.ui.theme,
+        runKey: state.ui.runKey,
+        sidebarHidden: state.ui.sidebarHidden,
       });
-      return {
-        getValue: () => cm.getValue(),
-        setValue: (value) => cm.setValue(value || ''),
-        reset: (value) => cm.reset(value || ''),
-        focus: () => cm.focus(),
-        isCodeMirror: true,
-      };
+    } catch (err) {
+      console.warn('could not save UI settings', err);
     }
-
-    const onInput = () => {
-      state.draft = textarea.value;
-      if (!state.suppressEditorSave) scheduleSave({ snapshot: false, delay: 900 });
-    };
-    textarea.addEventListener('input', onInput);
-    textarea.addEventListener('keydown', (event) => {
-      if (event.key === 'Tab' && !event.ctrlKey && !event.metaKey) {
-        event.preventDefault();
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        textarea.setRangeText('    ', start, end, 'end');
-        onInput();
-      }
-    });
-    return {
-      getValue: () => textarea.value,
-      setValue: (value) => { textarea.value = value || ''; state.draft = textarea.value; },
-      focus: () => textarea.focus(),
-      isCodeMirror: false,
-    };
   }
 
   // ---------------------------------------------------------------------
-  // Session persistence
+  // Sessions
   // ---------------------------------------------------------------------
 
   function activeSession() {
-    return state.sessions.find((s) => s.id === state.activeId) || null;
+    return state.sessions.find((session) => session.id === state.activeId) || null;
   }
 
   function uniqueName(base) {
-    const names = new Set(state.sessions.map((s) => s.name));
+    const names = new Set(state.sessions.map((session) => session.name));
     if (!names.has(base)) return base;
     let n = 2;
     while (names.has(`${base} (${n})`)) n += 1;
     return `${base} (${n})`;
+  }
+
+  function migrateSessionData(data) {
+    if (!data.schemaVersion) data.schemaVersion = 1;
+    if (Number(data.schemaVersion) < 2) {
+      data.libraries = Array.isArray(data.libraries) ? data.libraries : [];
+      data.schemaVersion = 2;
+    }
+    if (Number(data.schemaVersion) > CFG.schemaVersion) {
+      throw new Error(I18n.t('banner.schemaNewer', {
+        stored: data.schemaVersion, current: CFG.schemaVersion,
+      }));
+    }
+    if (!Array.isArray(data.libraries)) data.libraries = [];
+    data.libraries = data.libraries.filter((id) => typeof id === 'string');
+    return data;
   }
 
   function buildIndex(overrides = {}) {
@@ -727,112 +666,12 @@ del _pycalc_glue_source
     return {
       id: state.activeId,
       schemaVersion: CFG.schemaVersion,
+      libraries: state.libraries,
       history: state.history,
       draft: state.draft,
       namespace: state.namespace,
       namespaceMeta: state.namespaceMeta,
     };
-  }
-
-  async function doSave({ snapshot }) {
-    if (!state.storage || !state.activeId) return;
-    const index = buildIndex();
-    const data = buildData();
-
-    if (snapshot && py) {
-      try {
-        setSaveStatus('保存中…');
-        const info = JSON.parse(py.snapshot('/tmp/pycalc-snapshot.bin'));
-        if (info.ok) {
-          const bytes = pyodide.FS.readFile('/tmp/pycalc-snapshot.bin');
-          data.namespace = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-          data.namespaceMeta = {
-            engine: info.engine,
-            size: info.size,
-            failed: info.failed || [],
-            pyodideVersion: CFG.pyodideVersion,
-            pythonVersion: CFG.pythonVersion,
-          };
-          state.namespace = data.namespace;
-          state.namespaceMeta = data.namespaceMeta;
-        } else {
-          // Keep the previous snapshot rather than replacing it with nothing.
-          data.namespace = state.namespace;
-          data.namespaceMeta = state.namespaceMeta;
-          if (info.reason === 'too-large') {
-            banner('当前命名空间超过 32 MB，变量快照未保存；历史仍会保存。');
-          } else if (info.reason) {
-            banner(`变量快照保存失败：${info.reason}`);
-          }
-        }
-      } catch (err) {
-        console.warn('snapshot failed', err);
-        data.namespace = state.namespace;
-        data.namespaceMeta = state.namespaceMeta;
-        banner(`变量快照保存失败：${err.message || err}`);
-      }
-    }
-
-    try {
-      await state.storage.putSession(index, data);
-      const existing = state.sessions.find((s) => s.id === index.id);
-      if (existing) {
-        existing.name = index.name;
-        existing.updatedAt = index.updatedAt;
-        existing.executionCount = index.executionCount;
-      }
-      setSaveStatus(`已保存 ${fmtTime(Date.now())}`);
-    } catch (err) {
-      console.warn('save failed', err);
-      setSaveStatus('保存失败');
-      banner(`会话保存失败：${err.message || err}`, 'bad');
-    }
-  }
-
-  function queueSave(options) {
-    const opts = { snapshot: true, ...(options || {}) };
-    state.saveChain = state.saveChain.then(() => doSave(opts)).catch((err) => {
-      console.warn('save chain error', err);
-    });
-    return state.saveChain;
-  }
-
-  function scheduleSave(options) {
-    const opts = { snapshot: true, delay: 450, ...(options || {}) };
-    if (state.saveTimer) clearTimeout(state.saveTimer);
-    state.saveTimer = setTimeout(() => {
-      state.saveTimer = null;
-      queueSave(opts);
-    }, opts.delay);
-  }
-
-  async function saveNow(options) {
-    if (state.saveTimer) {
-      clearTimeout(state.saveTimer);
-      state.saveTimer = null;
-    }
-    return queueSave({ snapshot: true, ...(options || {}) });
-  }
-
-  function setSaveStatus(text) {
-    $('save-status').textContent = text || '';
-  }
-
-  function setEngineBadge(engine) {
-    state.engine = engine;
-    const node = $('engine-badge');
-    if (engine === 'cloudpickle') {
-      node.textContent = 'cloudpickle';
-      node.className = 'badge good';
-      node.title = '变量、函数与类可以跨刷新恢复';
-    } else if (engine === 'json') {
-      node.textContent = '仅基础类型';
-      node.className = 'badge warn';
-      node.title = 'cloudpickle 不可用，只保存 int/str/list/dict 等基础类型';
-    } else {
-      node.textContent = '初始化中';
-      node.className = 'badge';
-    }
   }
 
   function renderSessionSelect() {
@@ -843,7 +682,7 @@ del _pycalc_glue_source
       const option = document.createElement('option');
       option.value = session.id;
       option.textContent = session.name;
-      option.title = `更新于 ${fmtDateTime(session.updatedAt)}`;
+      option.title = fmtDateTime(session.updatedAt);
       select.appendChild(option);
     }
     if (state.activeId) select.value = state.activeId;
@@ -859,7 +698,7 @@ del _pycalc_glue_source
     const now = Date.now();
     const index = {
       id,
-      name: uniqueName(name || '新会话'),
+      name: uniqueName(name || I18n.t('session.defaultName')),
       createdAt: now,
       updatedAt: now,
       executionCount: 0,
@@ -868,6 +707,7 @@ del _pycalc_glue_source
     const data = {
       id,
       schemaVersion: CFG.schemaVersion,
+      libraries: [],
       history: [],
       draft: '',
       namespace: null,
@@ -880,36 +720,51 @@ del _pycalc_glue_source
 
   async function ensureAtLeastOneSession() {
     if (state.sessions.length > 0) return;
-    const created = await createSessionRecord('默认会话');
+    const created = await createSessionRecord(I18n.t('session.defaultName'));
     state.activeId = created.id;
     state.activeName = created.name;
     state.history = [];
     state.executionCount = 0;
     state.draft = '';
+    state.libraries = [];
     state.namespace = null;
     state.namespaceMeta = null;
     const active = await state.storage.getMeta('active');
     if (!active) await state.storage.putMeta({ key: 'active', value: created.id });
   }
 
-  function migrateSessionData(data) {
-    if (!data.schemaVersion) data.schemaVersion = 1;
-    if (Number(data.schemaVersion) > CFG.schemaVersion) {
-      throw new Error(
-        `会话「${data.id}」由更新版本创建（schema ${data.schemaVersion} > ${CFG.schemaVersion}）`
-      );
+  function renderLibraryBar() {
+    const host = $('library-list');
+    host.innerHTML = '';
+    const note = $('library-note');
+    note.textContent = I18n.t('libraries.hint');
+    if (AVAILABLE_LIBS.length === 0) {
+      note.textContent = I18n.t('libraries.none');
+      return;
     }
-    // Placeholder for future migrations.  Keep this function as the single
-    // place where session record shapes are upgraded.
-    return data;
+    for (const lib of AVAILABLE_LIBS) {
+      const label = el('label', 'lib-chip');
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.value = lib.id;
+      input.checked = state.libraries.includes(lib.id);
+      input.disabled = state.busy;
+      label.classList.toggle('checked', input.checked);
+      input.addEventListener('change', onLibraryChange);
+      label.appendChild(input);
+      label.appendChild(el('span', '', I18n.t(`libraries.${lib.id}`) || lib.label));
+      host.appendChild(label);
+    }
   }
 
   async function loadSessionIntoState(id) {
-    const index = state.sessions.find((s) => s.id === id);
-    if (!index) throw new Error('会话不存在');
-    const data = migrateSessionData((await state.storage.getSession(id)) || {
+    const index = state.sessions.find((session) => session.id === id);
+    if (!index) throw new Error('session not found');
+    const raw = await state.storage.getSession(id);
+    const data = migrateSessionData(raw || {
       id,
       schemaVersion: CFG.schemaVersion,
+      libraries: [],
       history: [],
       draft: '',
       namespace: null,
@@ -920,70 +775,104 @@ del _pycalc_glue_source
     state.history = Array.isArray(data.history) ? data.history : [];
     state.executionCount = Number(index.executionCount || 0);
     state.draft = data.draft || '';
+    state.libraries = data.libraries || [];
     state.namespace = data.namespace || null;
     state.namespaceMeta = data.namespaceMeta || null;
-    setHistory(state.history);
-    setEditorValue(state.draft);
+    state.historyNav = { index: null, draft: '' };
+    renderConsole();
+    resetEditorForSession(state.draft);
+    renderLibraryBar();
     updateHeader();
   }
 
-  function setEditorValue(value) {
-    if (!editor) return;
-    state.suppressEditorSave = true;
-    try {
-      if (typeof editor.reset === 'function') editor.reset(value || '');
-      else editor.setValue(value || '');
-      state.draft = value || '';
-    } finally {
-      state.suppressEditorSave = false;
+  async function restoreActiveSession() {
+    await ensureAtLeastOneSession();
+    const activeMeta = await state.storage.getMeta('active');
+    let id = activeMeta ? activeMeta.value : null;
+    if (!id || !state.sessions.some((session) => session.id === id)) {
+      const sorted = [...state.sessions].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      id = sorted[0] ? sorted[0].id : state.activeId;
     }
+    await loadSessionIntoState(id);
+    await state.storage.putMeta({ key: 'active', value: id });
   }
 
-  async function applyNamespaceForActiveSession() {
-    if (!py) return;
-    setStage('恢复会话变量…');
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    const nsMeta = state.namespaceMeta;
-    if (
-      nsMeta && state.namespace &&
-      (nsMeta.pythonVersion && nsMeta.pythonVersion !== CFG.pythonVersion ||
-       nsMeta.pyodideVersion && nsMeta.pyodideVersion !== CFG.pyodideVersion)
-    ) {
-      banner(
-        `变量快照来自 Pyodide ${nsMeta.pyodideVersion || '?'} / Python ${nsMeta.pythonVersion || '?'}，` +
-        `当前为 ${CFG.pyodideVersion} / Python ${CFG.pythonVersion}；历史不受影响，变量恢复将尽力而为。`
-      );
-    }
-    try {
-      py.reset();
-      const codes = state.history.map((entry) => entry.code).filter(Boolean);
-      const replay = JSON.parse(py.replayImports(JSON.stringify(codes)));
-      if (replay.failed && replay.failed.length) {
-        banner(`部分 import 未能回放：${replay.failed.slice(0, 3).join('；')}`);
-      }
-      if (state.namespace) {
-        const bytes = new Uint8Array(state.namespace);
-        pyodide.FS.writeFile('/tmp/pycalc-restore.bin', bytes);
-        const info = JSON.parse(py.restore('/tmp/pycalc-restore.bin'));
-        if (!info.ok) {
-          banner(`变量快照未能恢复：${info.error || '未知错误'}`, 'warn', true);
-        } else if (info.failed && info.failed.length) {
-          banner(
-            `部分对象未能恢复（${info.failed.length} 个）：` +
-            info.failed.slice(0, 4).map((f) => f.name).join('、'),
-            'warn', true
-          );
+  async function doSave({ snapshot }) {
+    if (!state.storage || !state.activeId) return;
+    const index = buildIndex();
+    const data = buildData();
+    if (snapshot && py) {
+      try {
+        setStatus('status.saving');
+        const info = JSON.parse(py.snapshot('/tmp/pycalc-snapshot.bin'));
+        if (info.ok) {
+          const bytes = pyodide.FS.readFile('/tmp/pycalc-snapshot.bin');
+          data.namespace = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+          data.namespaceMeta = {
+            engine: info.engine,
+            size: info.size,
+            failed: info.failed || [],
+            pyodideVersion: CFG.pyodideVersion,
+            pythonVersion: CFG.pythonVersion,
+          };
+          state.namespace = data.namespace;
+          state.namespaceMeta = data.namespaceMeta;
+        } else {
+          data.namespace = state.namespace;
+          data.namespaceMeta = state.namespaceMeta;
+          if (info.reason === 'too-large') banner('banner.snapshotTooLarge');
+          else if (info.reason) banner('banner.snapshotFailed', { error: info.reason });
         }
+      } catch (err) {
+        console.warn('snapshot failed', err);
+        data.namespace = state.namespace;
+        data.namespaceMeta = state.namespaceMeta;
+        banner('banner.snapshotFailed', { error: err.message || err });
       }
+    }
+    try {
+      await state.storage.putSession(index, data);
+      const existing = state.sessions.find((session) => session.id === index.id);
+      if (existing) {
+        existing.name = index.name;
+        existing.updatedAt = index.updatedAt;
+        existing.executionCount = index.executionCount;
+      }
+      setStatus('status.savedAt', { time: fmtTime(Date.now()) });
     } catch (err) {
-      console.warn('restore failed', err);
-      banner(`恢复会话变量失败：${err.message || err}`, 'bad', true);
+      console.warn('save failed', err);
+      setStatus('status.saveFailed');
+      banner('banner.saveFailed', { error: err.message || err }, 'bad');
     }
   }
 
-  async function switchSession(id, options = {}) {
-    if (state.busy) return;
-    if (!id || id === state.activeId) return;
+  function queueSave(options) {
+    const opts = { snapshot: true, ...(options || {}) };
+    state.saveChain = state.saveChain.then(() => doSave(opts)).catch((err) => {
+      console.warn('save chain error', err);
+    });
+    return state.saveChain;
+  }
+
+  function scheduleSave(options) {
+    const opts = { snapshot: true, delay: 500, ...(options || {}) };
+    if (state.saveTimer) clearTimeout(state.saveTimer);
+    state.saveTimer = setTimeout(() => {
+      state.saveTimer = null;
+      queueSave(opts);
+    }, opts.delay);
+  }
+
+  async function saveNow(options) {
+    if (state.saveTimer) {
+      clearTimeout(state.saveTimer);
+      state.saveTimer = null;
+    }
+    return queueSave({ snapshot: true, ...(options || {}) });
+  }
+
+  async function switchSession(id) {
+    if (state.busy || !id || id === state.activeId) return;
     state.busy = true;
     updateBusyUi();
     try {
@@ -991,15 +880,16 @@ del _pycalc_glue_source
       await loadSessionIntoState(id);
       await state.storage.putMeta({ key: 'active', value: id });
       await applyNamespaceForActiveSession();
-      if (!options.silent) toast(`已切换到「${state.activeName}」`);
+      if (editor) editor.focus();
+      toast('session.switched', { name: state.activeName });
     } catch (err) {
       console.warn(err);
       renderSessionSelect();
-      banner(`切换会话失败：${err.message || err}`, 'bad', true);
+      banner('banner.switchFailed', { error: err.message || err }, 'bad', true);
     } finally {
       state.busy = false;
       updateBusyUi();
-      if (editor) editor.focus();
+      refreshInspector();
     }
   }
 
@@ -1007,7 +897,7 @@ del _pycalc_glue_source
     if (state.busy) return null;
     const trimmed = String(name || '').trim();
     if (!trimmed) {
-      toast('会话名称不能为空');
+      toast('session.nameEmpty');
       return null;
     }
     state.busy = true;
@@ -1018,22 +908,26 @@ del _pycalc_glue_source
       await loadSessionIntoState(created.id);
       await state.storage.putMeta({ key: 'active', value: created.id });
       await applyNamespaceForActiveSession();
-      toast(`已创建「${state.activeName}」`);
+      if (editor) editor.focus();
+      toast('session.created', { name: state.activeName });
       return created.id;
     } catch (err) {
       console.warn(err);
-      banner(`新建会话失败：${err.message || err}`, 'bad', true);
+      banner('banner.newFailed', { error: err.message || err }, 'bad', true);
       return null;
     } finally {
       state.busy = false;
       updateBusyUi();
-      if (editor) editor.focus();
+      refreshInspector();
     }
   }
 
   async function newSession() {
     if (state.busy) return;
-    const raw = window.prompt('新会话名称', `会话 ${state.sessions.length + 1}`);
+    const raw = window.prompt(
+      I18n.t('session.promptNew'),
+      I18n.t('session.newName', { n: state.sessions.length + 1 })
+    );
     if (raw === null) return;
     await createSessionByName(raw);
   }
@@ -1042,78 +936,51 @@ del _pycalc_glue_source
     if (state.busy || !state.activeId) return false;
     const trimmed = String(name || '').trim();
     if (!trimmed) {
-      toast('会话名称不能为空');
+      toast('session.nameEmpty');
       return false;
     }
-    if (state.sessions.some((s) => s.name === trimmed && s.id !== state.activeId)) {
-      toast('已存在同名会话');
+    if (state.sessions.some((session) => session.name === trimmed && session.id !== state.activeId)) {
+      toast('session.nameDuplicate');
       return false;
     }
     try {
       state.activeName = trimmed;
       const index = buildIndex({ name: trimmed });
-      const current = state.sessions.find((s) => s.id === state.activeId);
+      const current = state.sessions.find((session) => session.id === state.activeId);
       if (current) current.name = trimmed;
       await state.storage.putSession(index, buildData());
       updateHeader();
-      toast('已重命名');
+      toast('session.renamed');
       return true;
     } catch (err) {
-      banner(`重命名失败：${err.message || err}`, 'bad');
+      banner('banner.renameFailed', { error: err.message || err }, 'bad');
       return false;
     }
   }
 
   async function renameSession() {
     if (state.busy || !state.activeId) return;
-    const raw = window.prompt('重命名会话', state.activeName);
+    const raw = window.prompt(I18n.t('session.promptRename'), state.activeName);
     if (raw === null) return;
     await renameSessionTo(raw);
   }
 
-  async function deleteSession() {
-    if (state.busy || !state.activeId) return;
-    if (!window.confirm(`删除会话「${state.activeName}」？历史与变量将永久删除。`)) return;
-    state.busy = true;
-    updateBusyUi();
-    try {
-      const doomed = state.activeId;
-      await state.storage.deleteSession(doomed);
-      state.sessions = state.sessions.filter((s) => s.id !== doomed);
-      if (state.sessions.length === 0) {
-        const created = await createSessionRecord('默认会话');
-        await loadSessionIntoState(created.id);
-        await state.storage.putMeta({ key: 'active', value: created.id });
-        await applyNamespaceForActiveSession();
-      } else {
-        const next = [...state.sessions].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
-        await loadSessionIntoState(next.id);
-        await state.storage.putMeta({ key: 'active', value: next.id });
-        await applyNamespaceForActiveSession();
-      }
-      toast('会话已删除');
-    } catch (err) {
-      console.warn(err);
-      banner(`删除会话失败：${err.message || err}`, 'bad', true);
-    } finally {
-      state.busy = false;
-      updateBusyUi();
-    }
-  }
-
-  async function deleteSessionById(id) {
+  async function deleteSessionById(id, ask = false) {
     if (state.busy || !id) return false;
-    const target = state.sessions.find((s) => s.id === id);
+    const target = state.sessions.find((session) => session.id === id);
     if (!target) return false;
+    if (ask && !window.confirm(I18n.t('session.deleteConfirm', { name: target.name }))) {
+      return false;
+    }
     const wasActive = id === state.activeId;
     state.busy = true;
     updateBusyUi();
     try {
       await state.storage.deleteSession(id);
-      state.sessions = state.sessions.filter((s) => s.id !== id);
+      state.sessions = state.sessions.filter((session) => session.id !== id);
       if (wasActive) {
         if (state.sessions.length === 0) {
-          const created = await createSessionRecord('默认会话');
+          const created = await createSessionRecord(I18n.t('session.defaultName'));
           await loadSessionIntoState(created.id);
           await state.storage.putMeta({ key: 'active', value: created.id });
           await applyNamespaceForActiveSession();
@@ -1126,34 +993,419 @@ del _pycalc_glue_source
       } else {
         renderSessionSelect();
       }
+      toast('session.deleted');
       return true;
     } catch (err) {
       console.warn(err);
-      banner(`删除会话失败：${err.message || err}`, 'bad', true);
+      banner('banner.deleteFailed', { error: err.message || err }, 'bad', true);
       return false;
     } finally {
       state.busy = false;
       updateBusyUi();
+      refreshInspector();
     }
   }
 
-  function updateBusyUi() {
-    $('run').disabled = state.busy || !state.ready;
-    $('session-select').disabled = state.busy;
-    $('session-new').disabled = state.busy;
-    $('session-rename').disabled = state.busy;
-    $('session-delete').disabled = state.busy;
-    $('run').textContent = state.running ? '运行中…' : state.busy ? '处理中…' : '运行';
+  async function deleteSession() {
+    if (state.busy || !state.activeId) return;
+    await deleteSessionById(state.activeId, true);
   }
 
   // ---------------------------------------------------------------------
-  // Running code
+  // Python glue: libraries, namespace restore, inspector
   // ---------------------------------------------------------------------
 
-  async function runCode() {
-    if (!state.ready || state.busy) return;
+  async function applyNamespaceForActiveSession() {
+    if (!py) return;
+    setStage('overlay.restore');
+    window.__pycalcBootStage = 'restore:start';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    try {
+      window.__pycalcBootStage = 'restore:reset';
+      py.reset();
+      window.__pycalcBootStage = 'restore:libraries';
+      const libResult = JSON.parse(py.setLibraries(JSON.stringify(state.libraries)));
+      if (libResult.conflicts && libResult.conflicts.length) {
+        banner('banner.libraryConflict', { names: libResult.conflicts.join(', ') }, 'warn', true);
+      }
+      window.__pycalcBootStage = 'restore:imports';
+      const codes = state.history.map((entry) => entry.code).filter(Boolean);
+      const replay = JSON.parse(py.replayImports(JSON.stringify(codes)));
+      if (replay.failed && replay.failed.length) {
+        banner('banner.importReplay', { names: replay.failed.slice(0, 3).join('; ') });
+      }
+      const meta = state.namespaceMeta;
+      if (meta && state.namespace &&
+          ((meta.pythonVersion && meta.pythonVersion !== CFG.pythonVersion) ||
+           (meta.pyodideVersion && meta.pyodideVersion !== CFG.pyodideVersion))) {
+        banner('banner.versionMismatch', {
+          fromPyodide: meta.pyodideVersion || '?',
+          fromPython: meta.pythonVersion || '?',
+          toPyodide: CFG.pyodideVersion,
+          toPython: CFG.pythonVersion,
+        });
+      }
+      window.__pycalcBootStage = 'restore:snapshot';
+      if (state.namespace) {
+        const bytes = new Uint8Array(state.namespace);
+        pyodide.FS.writeFile('/tmp/pycalc-restore.bin', bytes);
+        const info = JSON.parse(py.restore('/tmp/pycalc-restore.bin'));
+        if (!info.ok) {
+          banner('banner.restoreFailed', { error: info.error || I18n.t('error.unknown') }, 'warn', true);
+        } else if (info.failed && info.failed.length) {
+          banner('banner.partialRestore', {
+            count: info.failed.length,
+            names: info.failed.slice(0, 4).map((item) => item.name).join(', '),
+          }, 'warn', true);
+        }
+      }
+    } catch (err) {
+      console.warn('restore failed', err);
+      banner('banner.restoreFailed', { error: err.message || err }, 'bad', true);
+    }
+    window.__pycalcBootStage = 'restore:inspector';
+    refreshInspector();
+    // Importing pyplot (inside reset/setLibraries) can reset rcParams to the
+    // default style; re-apply the UI plot theme after the namespace is ready.
+    if (py) {
+      try { py.setPlotTheme(state.ui.theme); } catch (err) { console.warn('plot theme failed', err); }
+    }
+    window.__pycalcBootStage = 'restore:done';
+  }
+
+  function applyLibraries(announce = true) {
+    if (!py) return [];
+    try {
+      const result = JSON.parse(py.setLibraries(JSON.stringify(state.libraries)));
+      const conflicts = result.conflicts || [];
+      if (announce && conflicts.length) {
+        banner('banner.libraryConflict', { names: conflicts.join(', ') }, 'warn', true);
+      }
+      return conflicts;
+    } catch (err) {
+      console.warn('set libraries failed', err);
+      return [];
+    }
+  }
+
+  async function onLibraryChange() {
+    const checked = [...$('library-list').querySelectorAll('input[type="checkbox"]')]
+      .filter((input) => input.checked)
+      .map((input) => input.value);
+    state.libraries = checked;
+    for (const label of $('library-list').querySelectorAll('.lib-chip')) {
+      const input = label.querySelector('input');
+      label.classList.toggle('checked', Boolean(input && input.checked));
+    }
+    applyLibraries(true);
+    if (py) {
+      try { py.setPlotTheme(state.ui.theme); } catch (err) { console.warn('plot theme failed', err); }
+    }
+    refreshInspector();
+    queueSave({ snapshot: false });
+  }
+
+  function refreshInspector() {
+    const varsBody = $('vars-body');
+    const funcsBody = $('funcs-body');
+    const varsCard = varsBody.closest('.side-card');
+    const funcsCard = funcsBody.closest('.side-card');
+    varsBody.innerHTML = '';
+    funcsBody.innerHTML = '';
+    if (!py || !state.ready) {
+      varsCard.classList.add('empty');
+      funcsCard.classList.add('empty');
+      return;
+    }
+    try {
+      const vars = JSON.parse(py.listVars());
+      for (const row of vars) {
+        const tr = document.createElement('tr');
+        tr.appendChild(el('td', '', row.name));
+        const typeCell = el('td', '', row.type);
+        typeCell.title = row.type;
+        tr.appendChild(typeCell);
+        const valueCell = el('td', '', row.value);
+        valueCell.title = row.value;
+        tr.appendChild(valueCell);
+        varsBody.appendChild(tr);
+      }
+      varsCard.classList.toggle('empty', vars.length === 0);
+    } catch (err) {
+      console.warn('list variables failed', err);
+      varsCard.classList.add('empty');
+    }
+    try {
+      const funcs = JSON.parse(py.listFuncs());
+      for (const row of funcs) {
+        const tr = document.createElement('tr');
+        tr.appendChild(el('td', '', row.name));
+        const paramsCell = el('td', '', row.params);
+        paramsCell.title = row.params;
+        tr.appendChild(paramsCell);
+        funcsBody.appendChild(tr);
+      }
+      funcsCard.classList.toggle('empty', funcs.length === 0);
+    } catch (err) {
+      console.warn('list functions failed', err);
+      funcsCard.classList.add('empty');
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Console rendering
+  // ---------------------------------------------------------------------
+
+  function revokeObjectUrls() {
+    for (const url of state.objectUrls) {
+      try { URL.revokeObjectURL(url); } catch (_) { /* ignore */ }
+    }
+    state.objectUrls = [];
+  }
+
+  function makeImage(blob, mime) {
+    const img = document.createElement('img');
+    const url = URL.createObjectURL(blob);
+    state.objectUrls.push(url);
+    img.src = url;
+    img.alt = 'figure';
+    img.loading = 'lazy';
+    img.dataset.mime = mime || 'image/png';
+    img.addEventListener('load', () => scrollToBottom());
+    return img;
+  }
+
+  function outputText(entry) {
+    const parts = [];
+    if (entry.stdout) parts.push(entry.stdout.replace(/\n$/, ''));
+    if (entry.stderr) parts.push(entry.stderr.replace(/\n$/, ''));
+    if (entry.result !== null && entry.result !== undefined) parts.push(String(entry.result));
+    if (entry.error) parts.push(String(entry.error));
+    return parts.filter(Boolean).join('\n');
+  }
+
+  function hasOutput(entry) {
+    return Boolean(
+      entry.stdout || entry.stderr ||
+      (entry.result !== null && entry.result !== undefined) ||
+      entry.error || (entry.images && entry.images.length)
+    );
+  }
+
+  function promptButton(kind, n, entry) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `prompt-btn ${kind}`;
+    button.dataset.kind = kind;
+    button.dataset.n = String(n);
+    button.textContent = kind === 'in' ? `In [${n}]:` : `Out[${n}]:`;
+    button.title = I18n.t(kind === 'in' ? 'console.inputPromptTitle' : 'console.outputPromptTitle');
+    button.addEventListener('click', () => insertEntryText(entry, kind));
+    return button;
+  }
+
+  function insertEntryText(entry, kind) {
+    const text = kind === 'in' ? entry.code : outputText(entry);
+    if (!text) {
+      toast('console.noText');
+      return;
+    }
+    try {
+      editor.insertAtCursor(text);
+      editor.focus();
+      state.historyNav.index = null;
+      toast(kind === 'in' ? 'console.copiedInput' : 'console.copiedOutput');
+    } catch (err) {
+      banner('banner.copyFailed', { error: err.message || err }, 'bad');
+    }
+  }
+
+  function makeCell(entry) {
+    const cell = el('div', 'entry');
+    const inputRow = el('div', 'io-row');
+    inputRow.appendChild(promptButton('in', entry.n, entry));
+    inputRow.appendChild(el('pre', 'code', entry.code));
+    cell.appendChild(inputRow);
+
+    if (hasOutput(entry)) {
+      const outputRow = el('div', 'io-row');
+      outputRow.appendChild(promptButton('out', entry.n, entry));
+      const body = el('div', 'output-body');
+      if (entry.stdout) body.appendChild(el('pre', 'stream', entry.stdout));
+      if (entry.stderr) body.appendChild(el('pre', 'stream stderr', entry.stderr));
+      if (entry.result !== null && entry.result !== undefined) {
+        body.appendChild(el('pre', 'result', entry.result));
+      }
+      if (entry.error) body.appendChild(el('pre', 'error', entry.error));
+      if (entry.images && entry.images.length) {
+        const images = el('div', 'images');
+        for (const image of entry.images) {
+          if (image && image.blob) images.appendChild(makeImage(image.blob, image.mime));
+        }
+        if (images.childNodes.length) body.appendChild(images);
+      }
+      outputRow.appendChild(body);
+      cell.appendChild(outputRow);
+    }
+    return cell;
+  }
+
+  function emptyConsole() {
+    const node = el('div', 'empty-state');
+    node.appendChild(el('strong', '', I18n.t('console.emptyTitle')));
+    node.appendChild(el('p', '', I18n.t('console.emptyBody', {
+      key: I18n.t(state.ui.runKey === 'enter' ? 'run.enter' : 'run.ctrlEnter'),
+    })));
+    node.appendChild(el('p', '', I18n.t('console.emptyBody2')));
+    return node;
+  }
+
+  function renderConsole() {
+    revokeObjectUrls();
+    const host = $('console');
+    host.innerHTML = '';
+    if (!state.history.length) {
+      host.appendChild(emptyConsole());
+      return;
+    }
+    for (const entry of state.history) host.appendChild(makeCell(entry));
+    requestAnimationFrame(() => scrollToBottom());
+  }
+
+  function scrollToBottom() {
+    const host = $('console');
+    host.scrollTop = host.scrollHeight;
+  }
+
+  function createLiveCell(entry) {
+    const host = $('console');
+    const empty = host.querySelector('.empty-state');
+    if (empty) empty.remove();
+
+    const cell = el('div', 'entry');
+    const inputRow = el('div', 'io-row');
+    inputRow.appendChild(promptButton('in', entry.n, entry));
+    inputRow.appendChild(el('pre', 'code', entry.code));
+    cell.appendChild(inputRow);
+
+    const outputRow = el('div', 'io-row hidden');
+    outputRow.appendChild(promptButton('out', entry.n, entry));
+    const body = el('div', 'output-body');
+    const stdoutEl = el('pre', 'stream');
+    const stderrEl = el('pre', 'stream stderr');
+    stdoutEl.classList.add('hidden');
+    stderrEl.classList.add('hidden');
+    body.appendChild(stdoutEl);
+    body.appendChild(stderrEl);
+    outputRow.appendChild(body);
+    cell.appendChild(outputRow);
+    host.appendChild(cell);
+    scrollToBottom();
+
+    const ensureVisible = (node) => {
+      outputRow.classList.remove('hidden');
+      node.classList.remove('hidden');
+    };
+
+    return {
+      cell,
+      stdout(text) {
+        ensureVisible(stdoutEl);
+        stdoutEl.textContent += text;
+        scrollToBottom();
+      },
+      stderr(text) {
+        ensureVisible(stderrEl);
+        stderrEl.textContent += text;
+        scrollToBottom();
+      },
+      finish(finalEntry) {
+        const stored = makeCell(finalEntry);
+        cell.replaceWith(stored);
+        requestAnimationFrame(() => scrollToBottom());
+      },
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // Editor and run behaviour
+  // ---------------------------------------------------------------------
+
+  function setEditorText(value, updateDraft = true) {
+    if (!editor) return;
+    state.suppressEditorSave = true;
+    try {
+      editor.setValue(value == null ? '' : String(value));
+      if (typeof editor.setCursorEnd === 'function') editor.setCursorEnd();
+      if (updateDraft) state.draft = value == null ? '' : String(value);
+    } finally {
+      state.suppressEditorSave = false;
+    }
+  }
+
+  function resetEditorForSession(value) {
+    if (!editor) return;
+    state.suppressEditorSave = true;
+    try {
+      if (typeof editor.reset === 'function') editor.reset(value || '');
+      else editor.setValue(value || '');
+      state.draft = value || '';
+    } finally {
+      state.suppressEditorSave = false;
+    }
+  }
+
+  function onEditorChange(value) {
+    if (state.suppressEditorSave) return;
+    state.draft = value;
+    state.historyNav.index = null;
+    state.historyNav.draft = value;
+    scheduleSave({ snapshot: false, delay: 1000 });
+  }
+
+  function navigateHistory(delta) {
+    if (!state.ready || state.busy || state.history.length === 0) return false;
+    if (state.historyNav.index === null) {
+      state.historyNav.draft = editor.getValue();
+      state.historyNav.index = state.history.length;
+    }
+    let next = state.historyNav.index + delta;
+    if (next < 0) return true;
+    if (next >= state.history.length) {
+      state.historyNav.index = null;
+      setEditorText(state.historyNav.draft, false);
+    } else {
+      state.historyNav.index = next;
+      setEditorText(state.history[next].code, false);
+    }
+    if (typeof editor.setCursorEnd === 'function') editor.setCursorEnd();
+    return true;
+  }
+
+  function tryRunOnEnter() {
+    if (state.ui.runKey !== 'enter' || !state.ready || state.busy || !py) return false;
     const code = editor.getValue();
-    if (!code.trim()) return;
+    if (!code.trim()) return false;
+    try {
+      const info = JSON.parse(py.isComplete(code));
+      if (!info.complete) return false;
+    } catch (err) {
+      console.warn('completeness check failed', err);
+      return false;
+    }
+    runCode();
+    return true;
+  }
+
+  async function runCode() {
+    if (!state.ready || state.busy) return undefined;
+    const code = editor.getValue();
+    if (!code.trim()) return undefined;
+
+    // Clear the input immediately; the submitted code is kept in history.
+    setEditorText('', true);
+    state.historyNav.index = null;
+    state.historyNav.draft = '';
 
     state.busy = true;
     state.running = true;
@@ -1173,13 +1425,11 @@ del _pycalc_glue_source
     };
     state.history.push(entry);
     const live = createLiveCell(entry);
-    setActiveOutput({
+    state.activeOutput = {
       stdout: (text) => { entry.stdout += text; live.stdout(text); },
       stderr: (text) => { entry.stderr += text; live.stderr(text); },
-    });
-    // Give the browser one frame to paint the running state before Pyodide
-    // blocks the main thread.
-    await new Promise((resolve) => requestAnimationFrame(resolve));
+    };
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     try {
       const result = JSON.parse(py.run(code));
@@ -1200,10 +1450,11 @@ del _pycalc_glue_source
       entry.error = String((err && err.stack) || err);
     } finally {
       flushStreams();
-      setActiveOutput(null);
+      state.activeOutput = null;
       live.finish(entry);
       state.busy = false;
       state.running = false;
+      refreshInspector();
       updateBusyUi();
       scheduleSave({ snapshot: true, delay: 250 });
       if (editor) editor.focus();
@@ -1211,31 +1462,114 @@ del _pycalc_glue_source
     return entry;
   }
 
+  function updateBusyUi() {
+    $('run').disabled = state.busy || !state.ready;
+    $('session-select').disabled = state.busy;
+    $('session-new').disabled = state.busy;
+    $('session-rename').disabled = state.busy;
+    $('session-delete').disabled = state.busy;
+    $('language-select').disabled = state.busy;
+    $('run-key').disabled = state.busy;
+    $('theme-toggle').disabled = state.busy;
+    for (const input of $('library-list').querySelectorAll('input')) {
+      input.disabled = state.busy;
+    }
+    $('run').textContent = state.running
+      ? I18n.t('run.running')
+      : state.busy ? I18n.t('run.processing') : I18n.t('run.button');
+  }
+
   // ---------------------------------------------------------------------
-  // Boot
+  // UI settings: language, theme, run key, sidebar
   // ---------------------------------------------------------------------
 
-  async function restoreActiveSession() {
-    await ensureAtLeastOneSession();
-    const activeMeta = await state.storage.getMeta('active');
-    let id = activeMeta ? activeMeta.value : null;
-    if (!id || !state.sessions.some((s) => s.id === id)) {
-      const sorted = [...state.sessions].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-      id = sorted[0] ? sorted[0].id : state.activeId;
-    }
-    await loadSessionIntoState(id);
-    await state.storage.putMeta({ key: 'active', value: id });
+  function renderRunHint() {
+    $('run-hint').textContent = I18n.t(
+      state.ui.runKey === 'enter' ? 'run.hintEnter' : 'run.hintCtrl'
+    );
+    $('run-key').value = state.ui.runKey;
+    window.__pycalcRunKeyMode = state.ui.runKey;
   }
+
+  function applyTheme(theme, persist = true) {
+    state.ui.theme = theme === 'dark' ? 'dark' : 'light';
+    document.documentElement.dataset.theme = state.ui.theme;
+    $('theme-toggle').textContent = state.ui.theme === 'dark' ? '☀' : '☾';
+    $('theme-toggle').title = I18n.t('theme.toggleTitle');
+    if (editor && typeof editor.setTheme === 'function') editor.setTheme(state.ui.theme);
+    if (py) {
+      try { py.setPlotTheme(state.ui.theme); } catch (err) { console.warn('plot theme failed', err); }
+    }
+    if (persist) saveUiMeta();
+  }
+
+  function applyRunKey(runKey, persist = true) {
+    state.ui.runKey = runKey === 'enter' ? 'enter' : 'ctrl-enter';
+    renderRunHint();
+    if (!state.history.length) renderConsole();
+    if (persist) saveUiMeta();
+  }
+
+  function applySidebar() {
+    const mobile = window.innerWidth <= 880;
+    document.body.classList.toggle('sidebar-collapsed', !mobile && state.ui.sidebarHidden);
+    document.body.classList.toggle('sidebar-open', mobile && state.mobileSidebarOpen);
+  }
+
+  async function setLanguage(lang) {
+    state.ui.language = MESSAGES[lang] ? lang : 'en';
+    applyLanguageToUi();
+    hideBanner();
+    $('toast').classList.add('hidden');
+    await saveUiMeta();
+  }
+
+  function applyLanguageToUi() {
+    I18n.setLanguage(state.ui.language);
+    $('language-select').value = state.ui.language;
+    $('theme-toggle').title = I18n.t('theme.toggleTitle');
+    $('session-select').title = I18n.t('session.selectTitle');
+    $('sidebar-toggle').title = I18n.t('sidebar.toggleTitle');
+    $('run-key').value = state.ui.runKey;
+    renderRunHint();
+    renderEngineBadge();
+    renderStatus();
+    updateBusyUi();
+    renderLibraryBar();
+    renderConsole();
+    refreshInspector();
+    renderOverlay();
+    if (editor && typeof editor.setPlaceholder === 'function') {
+      editor.setPlaceholder(I18n.t('editor.placeholder'));
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Events and boot
+  // ---------------------------------------------------------------------
 
   function bindUi() {
     $('run').addEventListener('click', runCode);
-    $('session-select').addEventListener('change', (event) => {
-      switchSession(event.target.value);
-    });
+    $('session-select').addEventListener('change', (event) => switchSession(event.target.value));
     $('session-new').addEventListener('click', newSession);
     $('session-rename').addEventListener('click', renameSession);
     $('session-delete').addEventListener('click', deleteSession);
     $('overlay-retry').addEventListener('click', () => location.reload());
+    $('language-select').addEventListener('change', (event) => setLanguage(event.target.value));
+    $('run-key').addEventListener('change', (event) => applyRunKey(event.target.value));
+    $('theme-toggle').addEventListener('click', () => {
+      applyTheme(state.ui.theme === 'dark' ? 'light' : 'dark');
+    });
+    $('sidebar-toggle').addEventListener('click', () => {
+      if (window.innerWidth <= 880) {
+        state.mobileSidebarOpen = !state.mobileSidebarOpen;
+      } else {
+        state.ui.sidebarHidden = !state.ui.sidebarHidden;
+        saveUiMeta();
+      }
+      applySidebar();
+    });
+    window.addEventListener('resize', applySidebar);
 
     document.addEventListener('keydown', (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
@@ -1245,9 +1579,7 @@ del _pycalc_glue_source
     });
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden' && state.ready) {
-        saveNow().catch(() => {});
-      }
+      if (document.visibilityState === 'hidden' && state.ready) saveNow().catch(() => {});
     });
 
     window.addEventListener('error', (event) => {
@@ -1258,38 +1590,135 @@ del _pycalc_glue_source
     });
   }
 
+  function createEditor() {
+    const textarea = $('editor');
+    if (window.PyCalcEditor && typeof window.PyCalcEditor.create === 'function') {
+      const host = el('div', 'cm-host');
+      const initial = textarea.value;
+      textarea.replaceWith(host);
+      const cm = window.PyCalcEditor.create(host, {
+        value: initial,
+        theme: state.ui.theme,
+        placeholder: I18n.t('editor.placeholder'),
+        onChange: onEditorChange,
+        onRun: runCode,
+        onTryEnter: tryRunOnEnter,
+        onHistory: navigateHistory,
+      });
+      return {
+        isCodeMirror: true,
+        getValue: () => cm.getValue(),
+        setValue: (value) => cm.setValue(value),
+        insertAtCursor: (text) => cm.insertAtCursor(text),
+        setCursorEnd: () => cm.setCursorEnd(),
+        setTheme: (theme) => cm.setTheme(theme),
+        setPlaceholder: (text) => cm.setPlaceholder(text),
+        reset: (value) => cm.reset(value),
+        focus: () => cm.focus(),
+      };
+    }
+
+    const onInput = () => onEditorChange(textarea.value);
+    textarea.addEventListener('input', onInput);
+    textarea.addEventListener('keydown', (event) => {
+      const composing = event.isComposing || event.keyCode === 229;
+      if (composing) return;
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        event.preventDefault();
+        runCode();
+        return;
+      }
+      if (event.key === 'Enter' && !event.shiftKey && state.ui.runKey === 'enter' && !state.busy) {
+        if (tryRunOnEnter()) event.preventDefault();
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        const before = textarea.value.slice(0, textarea.selectionStart);
+        if (!before.includes('\n') && textarea.selectionStart === textarea.selectionEnd) {
+          if (navigateHistory(-1)) event.preventDefault();
+        }
+      } else if (event.key === 'ArrowDown') {
+        const after = textarea.value.slice(textarea.selectionEnd);
+        if (!after.includes('\n') && textarea.selectionStart === textarea.selectionEnd) {
+          if (navigateHistory(1)) event.preventDefault();
+        }
+      } else if (event.key === 'Tab' && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        textarea.setRangeText('    ', start, end, 'end');
+        onInput();
+      }
+    });
+    return {
+      isCodeMirror: false,
+      getValue: () => textarea.value,
+      setValue: (value) => {
+        textarea.value = value || '';
+        state.suppressEditorSave = true;
+        try { state.draft = textarea.value; } finally { state.suppressEditorSave = false; }
+      },
+      insertAtCursor: (text) => {
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        textarea.setRangeText(text, start, end, 'end');
+        onInput();
+      },
+      setCursorEnd: () => {
+        const end = textarea.value.length;
+        textarea.setSelectionRange(end, end);
+      },
+      setTheme: () => {},
+      setPlaceholder: (text) => { textarea.placeholder = text; },
+      reset: (value) => {
+        textarea.value = value || '';
+        state.suppressEditorSave = true;
+        try { state.draft = textarea.value; } finally { state.suppressEditorSave = false; }
+      },
+      focus: () => textarea.focus(),
+    };
+  }
+
   async function boot() {
     bindUi();
-    editor = createEditor();
-    setEngineBadge('unknown');
-
+    I18n.setLanguage(detectLanguage());
+    setOverlay('overlay.startTitle', 'overlay.startDetail');
     installFetchShim();
 
-    setStage('打开会话数据库…');
+    setOverlay('overlay.startTitle', 'overlay.db');
     try {
       state.storage = await openStorage();
     } catch (err) {
       console.warn('IndexedDB unavailable', err);
       state.storage = new MemoryStorage();
-      banner(
-        `IndexedDB 不可用，本次会话不会写入磁盘（${err.message || err}）。`,
-        'bad', true
-      );
+      banner('banner.idbUnavailable', { error: err.message || err }, 'bad', true);
     }
 
-    const rows = await state.storage.listSessions();
-    state.sessions = rows || [];
-    await restoreActiveSession();
-    renderSessionSelect();
+    state.ui = await loadUiMeta();
+    I18n.setLanguage(state.ui.language);
+    document.documentElement.dataset.theme = state.ui.theme;
+    $('language-select').value = state.ui.language;
+    $('run-key').value = state.ui.runKey;
+    $('theme-toggle').textContent = state.ui.theme === 'dark' ? '☀' : '☾';
+    window.__pycalcRunKeyMode = state.ui.runKey;
+    applySidebar();
 
-    setStage(`加载 Pyodide ${CFG.pyodideVersion}（Python ${CFG.pythonVersion}）…`);
+    editor = createEditor();
+    applyLanguageToUi();
+    state.sessions = (await state.storage.listSessions()) || [];
+    await restoreActiveSession();
+
+    setOverlay('overlay.startTitle', 'overlay.runtime', {
+      version: CFG.pyodideVersion, python: CFG.pythonVersion,
+    });
     try {
       await loadRuntime();
     } catch (err) {
       console.error(err);
       setOverlay(
-        '无法启动 Python 运行时',
-        '请检查生成文件是否完整，或重新构建。',
+        'overlay.runtimeTitle',
+        'overlay.runtimeDetail',
+        {},
         String((err && err.stack) || err)
       );
       return;
@@ -1297,50 +1726,59 @@ del _pycalc_glue_source
 
     try {
       const test = JSON.parse(py.selfTest());
-      setEngineBadge(test.engine);
-      if (test.engine === 'json') {
-        banner('cloudpickle 不可用：只会保存基础类型，函数/类/复杂对象不会跨刷新恢复。', 'warn', true);
-      }
+      setEngine(test.engine);
+      if (test.engine === 'json') banner('banner.cloudpickleUnavailable', {}, 'warn', true);
     } catch (err) {
       console.warn('self test failed', err);
-      setEngineBadge('json');
+      setEngine('json');
     }
 
+    window.__pycalcBootStage = 'boot:apply-namespace';
     await applyNamespaceForActiveSession();
+    window.__pycalcBootStage = 'boot:ready';
 
     state.ready = true;
     window.__pycalcReady = true;
+    refreshInspector();
     updateBusyUi();
     hideOverlay();
+    setStatus('status.ready');
     if (editor) editor.focus();
-    setSaveStatus('');
-    if (!state.history.length) setHistory([]);
+    if (!state.history.length) renderConsole();
   }
 
-  // Used by the CodeMirror Mod-Enter keymap.
+  // Used by the CodeMirror Mod-Enter keymap and developer tooling.
   window.__pycalcRun = runCode;
 
-  // Small programmatic surface used by the browser smoke tests.  It is also
-  // handy in devtools; it does not expose anything that the UI cannot do.
   window.__pycalc = {
     get ready() { return state.ready; },
     engine: () => state.engine,
-    sessions: () => state.sessions.map((s) => ({
-      id: s.id,
-      name: s.name,
-      createdAt: s.createdAt,
-      updatedAt: s.updatedAt,
-      executionCount: s.executionCount,
+    sessions: () => state.sessions.map((session) => ({
+      id: session.id,
+      name: session.name,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+      executionCount: session.executionCount,
     })),
-    active: () => ({ id: state.activeId, name: state.activeName, count: state.executionCount }),
-    history: () => state.history.map((e) => ({
-      n: e.n, code: e.code, status: e.status, result: e.result,
-      error: e.error, stdout: e.stdout, stderr: e.stderr,
-      images: (e.images || []).length,
+    active: () => ({
+      id: state.activeId,
+      name: state.activeName,
+      count: state.executionCount,
+      libraries: [...state.libraries],
+    }),
+    history: () => state.history.map((entry) => ({
+      n: entry.n,
+      code: entry.code,
+      status: entry.status,
+      result: entry.result,
+      error: entry.error,
+      stdout: entry.stdout,
+      stderr: entry.stderr,
+      images: (entry.images || []).length,
     })),
     runCell: async (code) => {
-      if (!state.ready) throw new Error('PyCalc 尚未就绪');
-      editor.setValue(code);
+      if (!state.ready) throw new Error('PyCalc is not ready');
+      setEditorText(code, true);
       return runCode();
     },
     createSession: createSessionByName,
@@ -1352,11 +1790,40 @@ del _pycalc_glue_source
     deleteSession: deleteSessionById,
     saveNow,
     lastEntry: () => state.history[state.history.length - 1] || null,
+    setLanguage,
+    setTheme: (theme) => applyTheme(theme),
+    setPlotTheme: (theme) => (py ? py.setPlotTheme(theme) : null),
+    setRunKey: (key) => applyRunKey(key),
+    selectLibraries: async (ids) => {
+      state.libraries = (ids || []).filter((id) => AVAILABLE_LIB_IDS.has(id));
+      renderLibraryBar();
+      applyLibraries(true);
+      refreshInspector();
+      await queueSave({ snapshot: false });
+      return [...state.libraries];
+    },
+    isComplete: (code) => {
+      if (!py) return false;
+      try { return Boolean(JSON.parse(py.isComplete(code)).complete); } catch (_) { return false; }
+    },
+    getEditorValue: () => (editor ? editor.getValue() : ''),
+    setEditorText: (text) => setEditorText(text, true),
+    historyNav: (delta) => navigateHistory(delta),
+    tryRunOnEnter: () => tryRunOnEnter(),
+    insertAtCursor: (text) => editor.insertAtCursor(text),
+    variables: () => (py ? JSON.parse(py.listVars()) : []),
+    functions: () => (py ? JSON.parse(py.listFuncs()) : []),
+    ui: () => ({ ...state.ui }),
   };
 
   boot().catch((err) => {
     console.error(err);
     window.__pycalcBootError = String((err && err.stack) || err);
-    setOverlay('启动失败', '发生未预期的错误。', window.__pycalcBootError);
+    setOverlay(
+      'overlay.bootTitle',
+      'overlay.bootDetail',
+      {},
+      window.__pycalcBootError
+    );
   });
 })();
