@@ -188,6 +188,7 @@ LAYOUT = {
                 {"label": "tau", "insert": "tau"},
                 {"label": "inf", "insert": "inf"},
                 {"label": "nan", "insert": "nan"},
+                {"label": "range", "insert": "range("},
             ],
         },
         "python": {
