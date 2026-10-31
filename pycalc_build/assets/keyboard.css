@@ -81,7 +81,7 @@
 }
 
 .mk-split-left {
-  flex: 0 0 25%;
+  flex: 0 0 15%;
   display: flex;
   flex-direction: column;
   gap: 5px;

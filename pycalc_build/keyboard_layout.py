@@ -41,9 +41,10 @@ LAYOUT = {
                 ],
             },
             "right": {
-                "columns": 6,
+                "columns": 7,
                 "rows": [
                     [
+                        {"label": '"', "insert": '"'},
                         {"label": "@", "insert": "@"},
                         {"label": "(", "insert": "("},
                         {"label": ")", "insert": ")"},
@@ -52,6 +53,7 @@ LAYOUT = {
                         {"label": "⌫", "action": "backspace"},
                     ],
                     [
+                        {"label": '%', "insert": '%'},
                         {"label": ":", "insert": ":"},
                         {"label": "7", "insert": "7"},
                         {"label": "8", "insert": "8"},
@@ -60,6 +62,7 @@ LAYOUT = {
                         {"label": "*", "insert": "*"},
                     ],
                     [
+                        {"label": ">", "insert": ">"},
                         {"label": "=", "insert": "="},
                         {"label": "4", "insert": "4"},
                         {"label": "5", "insert": "5"},
@@ -68,6 +71,7 @@ LAYOUT = {
                         {"label": "+", "insert": "+"},
                     ],
                     [
+                        {"label": "<", "insert": "<"},
                         {"label": "π", "insert": "pi"},
                         {"label": "1", "insert": "1"},
                         {"label": "2", "insert": "2"},
@@ -77,11 +81,11 @@ LAYOUT = {
                     ],
                     [
                         {"label": "␣", "insert": " "},
+                        {"label": "⏎", "insert": "\n"},                        
                         {"label": "[", "insert": "["},
                         {"label": "]", "insert": "]"},
                         {"label": "0", "insert": "0"},
-                        {"label": "⏎", "insert": "\n"},
-                        {"label": "▶", "action": "run", "style": "run"},
+                        {"label": "▶", "action": "run", "style": "run", "span":2},
                     ],
                 ],
             },
