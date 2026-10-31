@@ -551,6 +551,69 @@ def _pycalc_completion_items():
     return json.dumps(rows[:500], ensure_ascii=False)
 
 
+def _pycalc_attribute_items(expr):
+    parts = str(expr).split(".")
+    if not parts or any(not part.isidentifier() for part in parts):
+        return json.dumps({"expr": str(expr), "type": None, "items": []})
+    user_globals = _pycalc_user_globals()
+    try:
+        obj = eval(str(expr), user_globals, user_globals)
+    except Exception:
+        return json.dumps({"expr": str(expr), "type": None, "items": []})
+
+    if isinstance(obj, types.ModuleType):
+        type_label = f"module {obj.__name__}"
+    else:
+        cls = type(obj)
+        module = str(getattr(cls, "__module__", ""))
+        name = str(getattr(cls, "__qualname__", cls.__name__))
+        type_label = name if module in ("builtins", "__main__") else f"{module.split('.')[0]}.{name}"
+
+    parent_is_module = isinstance(obj, types.ModuleType)
+    rows = []
+    for name in dir(obj):
+        if name.startswith("_pycalc_"):
+            continue
+        try:
+            value = getattr(obj, name)
+        except Exception:
+            continue
+        if isinstance(value, types.ModuleType):
+            kind = "namespace"
+            detail = "module"
+        elif isinstance(value, type):
+            kind = "class"
+            detail = f"class {value.__name__}"
+        elif isinstance(value, property):
+            kind = "property"
+            detail = "property"
+        elif inspect.isroutine(value):
+            kind = "function" if parent_is_module else "method"
+            try:
+                detail = str(inspect.signature(value))
+            except Exception:
+                detail = "(...)"
+        else:
+            kind = "variable"
+            try:
+                detail = _pycalc_type_name(value)
+            except Exception:
+                detail = "object"
+        info = f"{expr} : {type_label}"
+        if kind in ("function", "method", "class"):
+            info += f"\n{name}{detail if detail.startswith('(') else ''}"
+        else:
+            info += f"\n{name} : {detail}"
+        rows.append({"label": name, "type": kind, "detail": detail, "info": info})
+
+    # Public members first; dunders are still available when the user types "_".
+    rows.sort(key=lambda row: (row["label"].startswith("_"), row["label"].lower()))
+    return json.dumps(
+        {"expr": str(expr), "type": type_label, "items": rows[:1200]},
+        ensure_ascii=False,
+    )
+
+
 def _pycalc_truncate(text):
     if text is None:
         return None

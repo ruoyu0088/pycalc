@@ -58,14 +58,6 @@
   const AVAILABLE_LIBS = Array.isArray(CFG.availableLibraries) ? CFG.availableLibraries : [];
   const AVAILABLE_LIB_IDS = new Set(AVAILABLE_LIBS.map((lib) => lib.id));
 
-  const PY_KEYWORDS = [
-    'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue',
-    'def', 'del', 'elif', 'else', 'except', 'False', 'finally', 'for',
-    'from', 'global', 'if', 'import', 'in', 'is', 'lambda', 'None',
-    'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'True', 'try',
-    'while', 'with', 'yield',
-  ];
-
   const BUILTIN_COMPLETIONS = [
     ['print', '(*args, sep=" ", end="\\n", file=None, flush=False)'],
     ['len', '(obj, /)'],
@@ -196,6 +188,7 @@
     objectUrls: [],
     activeOutput: null,
     completions: [],
+    attributeCache: new Map(),
     historyNav: { index: null, draft: '' },
     suppressEditorSave: false,
     ui: { ...DEFAULT_UI },
@@ -251,6 +244,13 @@
   function setEngine(engine) {
     state.engine = engine;
     renderEngineBadge();
+  }
+
+  function setTypeHint(text) {
+    const element = $('type-hint');
+    if (!element) return;
+    element.textContent = text || '';
+    element.classList.toggle('hidden', !text);
   }
 
   function renderEngineBadge() {
@@ -459,7 +459,7 @@ for _pycalc_name in (
     '_pycalc_replay_imports', '_pycalc_namespace_info',
     '_pycalc_set_libraries', '_pycalc_is_complete',
     '_pycalc_list_vars', '_pycalc_list_funcs', '_pycalc_set_plot_theme',
-    '_pycalc_completion_items',
+    '_pycalc_completion_items', '_pycalc_attribute_items',
 ):
     setattr(_pycalc_main, _pycalc_name, getattr(_pycalc_mod, _pycalc_name))
 del _pycalc_name
@@ -483,6 +483,7 @@ del _pycalc_glue_source
       listFuncs: pyodide.globals.get('_pycalc_list_funcs'),
       setPlotTheme: pyodide.globals.get('_pycalc_set_plot_theme'),
       listCompletions: pyodide.globals.get('_pycalc_completion_items'),
+      attributeItems: pyodide.globals.get('_pycalc_attribute_items'),
     };
   }
 
@@ -1172,6 +1173,7 @@ del _pycalc_glue_source
   }
 
   function refreshCompletions() {
+    state.attributeCache.clear();
     if (!py || !state.ready) {
       state.completions = [];
       return;
@@ -1205,16 +1207,42 @@ del _pycalc_glue_source
         info: `${label}${detail}`,
       });
     }
-    for (const keyword of PY_KEYWORDS) {
-      if (seen.has(keyword)) continue;
-      seen.add(keyword);
-      items.push({ label: keyword, type: 'keyword', detail: 'keyword' });
-    }
     return items;
   }
 
+  function getAttributeCompletions(expr) {
+    const key = String(expr || '');
+    if (state.attributeCache.has(key)) return state.attributeCache.get(key);
+    const empty = { expr: key, type: null, items: [] };
+    if (!py || !state.ready || !key) return empty;
+    try {
+      const data = JSON.parse(py.attributeItems(key));
+      const value = {
+        expr: data.expr || key,
+        type: data.type || null,
+        items: Array.isArray(data.items) ? data.items : [],
+      };
+      state.attributeCache.set(key, value);
+      return value;
+    } catch (err) {
+      console.warn('attribute completion failed', err);
+      return empty;
+    }
+  }
+
   function signatureFor(name) {
-    if (!name || name.includes('.')) return null;
+    if (!name) return null;
+    if (name.includes('.')) {
+      const index = name.lastIndexOf('.');
+      const expr = name.slice(0, index);
+      const attr = name.slice(index + 1);
+      const data = getAttributeCompletions(expr);
+      const item = data.items.find((row) => row.label === attr);
+      if (item && (item.type === 'function' || item.type === 'method')) {
+        return item.detail || '(...)';
+      }
+      return null;
+    }
     const item = state.completions.find((row) => row.label === name);
     if (item && item.type === 'function') return item.detail || '(...)';
     const builtin = BUILTIN_COMPLETIONS.find((row) => row[0] === name);
@@ -1763,7 +1791,9 @@ del _pycalc_glue_source
         onTryEnter: tryRunOnEnter,
         onHistory: navigateHistory,
         getCompletions: getCompletionOptions,
+        getAttributes: getAttributeCompletions,
         getSignature: signatureFor,
+        onTypeHint: setTypeHint,
       });
       return {
         isCodeMirror: true,
@@ -1974,6 +2004,7 @@ del _pycalc_glue_source
     variables: () => (py ? JSON.parse(py.listVars()) : []),
     functions: () => (py ? JSON.parse(py.listFuncs()) : []),
     completions: () => getCompletionOptions(),
+    attributes: (expr) => getAttributeCompletions(expr),
     signature: (name) => signatureFor(name),
     ui: () => ({ ...state.ui }),
   };

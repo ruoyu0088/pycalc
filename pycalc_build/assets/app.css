@@ -603,6 +603,23 @@ pre.error {
 
 .hint { color: var(--muted); font-size: 11.5px; flex: 1 1 auto; }
 
+.type-hint {
+  flex: 0 1 auto;
+  max-width: 42%;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.type-hint.hidden { display: none; }
+
 .run-btn {
   min-width: 92px;
   padding: 7px 17px;

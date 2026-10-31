@@ -284,6 +284,35 @@ def test_new_features() -> None:
         sig = browser.eval("document.querySelector('.signature-tip')?.textContent || ''")
         assert "a, b=2" in sig, sig
 
+        # attribute completion and type inference from the live namespace
+        browser.run_cell("arr = np.linspace(1, 2)")
+        attrs = browser.eval("window.__pycalc.attributes('arr')")
+        assert attrs["type"] == "numpy.ndarray", attrs
+        assert any(row["label"] == "reshape" and row["type"] == "method" for row in attrs["items"])
+        assert not any(item["label"] in ("if", "for", "while")
+                       for item in browser.eval("window.__pycalc.completions()"))
+
+        browser.eval("window.__pycalc.setEditorText('')")
+        browser.eval("document.querySelector('.cm-content').focus()")
+        browser.call("Input.insertText", {"text": "arr.re"})
+        time.sleep(0.4)
+        popup = browser.eval("document.querySelector('.cm-tooltip-autocomplete')?.textContent || ''")
+        assert "reshape" in popup, popup
+        assert browser.eval("document.querySelector('#type-hint')?.textContent") == "arr : numpy.ndarray"
+
+        browser.eval("window.__pycalc.setEditorText('')")
+        browser.eval("document.querySelector('.cm-content').focus()")
+        browser.call("Input.insertText", {"text": "np.lin"})
+        time.sleep(0.4)
+        popup = browser.eval("document.querySelector('.cm-tooltip-autocomplete')?.textContent || ''")
+        assert "linspace" in popup, popup
+        assert browser.eval("document.querySelector('#type-hint')?.textContent") == "np : module numpy"
+
+        browser.eval("window.__pycalc.setEditorText('np.linspace(')")
+        time.sleep(0.3)
+        sig = browser.eval("document.querySelector('.signature-tip')?.textContent || ''")
+        assert "start, stop" in sig, sig
+
         # bracket / quote auto-completion
         browser.eval("window.__pycalc.setEditorText('')")
         browser.eval("document.querySelector('.cm-content').focus()")

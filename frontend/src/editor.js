@@ -140,19 +140,90 @@ function findCallContext(state) {
   return null;
 }
 
-function makeCompletionSource(getCompletions) {
+function makeCompletionSource(getCompletions, getAttributes) {
   return (context) => {
-    const word = context.matchBefore(/[A-Za-z_]\w*/);
-    if (!word) return null;
-    if (word.from === word.to && !context.explicit) return null;
+    // Attribute completion: x. / np. / np.linalg. / foo.bar
+    const word = context.matchBefore(/[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\.?/);
+    if (word && word.text.includes('.')) {
+      const dot = word.text.lastIndexOf('.');
+      const expr = word.text.slice(0, dot);
+      const prefix = word.text.slice(dot + 1);
+      if (!expr) return null;
+      const data = getAttributes(expr);
+      if (!data || !data.items || data.items.length === 0) return null;
+      // Hide dunders/private members until the user explicitly types "_".
+      const options = prefix.startsWith('_')
+        ? data.items
+        : data.items.filter((item) => !item.label.startsWith('_'));
+      if (options.length === 0) return null;
+      return {
+        from: word.from + dot + 1,
+        options,
+        validFor: /^[A-Za-z_]\w*$/,
+      };
+    }
+
+    // Top-level names (variables, functions, modules, builtins).
+    const name = context.matchBefore(/[A-Za-z_]\w*/);
+    if (!name && !context.explicit) return null;
+    const from = name ? name.from : context.pos;
     const options = getCompletions();
     if (!options || options.length === 0) return null;
     return {
-      from: word.from,
+      from,
       options,
       validFor: /^[A-Za-z_]\w*$/,
     };
   };
+}
+
+function findAttributeContext(state) {
+  const position = state.selection.main.head;
+  const text = state.doc.toString();
+  let start = position;
+  while (start > 0 && /[\w.]/.test(text[start - 1])) start -= 1;
+  const token = text.slice(start, position);
+  const dot = token.lastIndexOf('.');
+  if (dot <= 0) return null;
+  const expr = token.slice(0, dot);
+  if (!/^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$/.test(expr)) return null;
+  return { expr, prefix: token.slice(dot + 1) };
+}
+
+function typeHint(getAttributes, onTypeHint) {
+  return ViewPlugin.fromClass(
+    class {
+      constructor(view) {
+        this.view = view;
+        this.last = null;
+        this.update(view);
+      }
+
+      update(update) {
+        const context = findAttributeContext(update.state);
+        if (!context) {
+          this.set('');
+          return;
+        }
+        const data = getAttributes(context.expr);
+        if (!data || !data.type) {
+          this.set('');
+          return;
+        }
+        this.set(`${context.expr} : ${data.type}`);
+      }
+
+      set(text) {
+        if (text === this.last) return;
+        this.last = text;
+        onTypeHint(text);
+      }
+
+      destroy() {
+        onTypeHint('');
+      }
+    }
+  );
 }
 
 function signatureHelp(getSignature) {
@@ -259,7 +330,9 @@ function signatureHelp(getSignature) {
  *   onTryEnter?: () => boolean,
  *   onHistory?: (delta: number) => boolean,
  *   getCompletions?: () => Array<object>,
- *   getSignature?: (name: string) => string|null
+ *   getAttributes?: (expr: string) => {items: Array<object>, type?: string|null},
+ *   getSignature?: (name: string) => string|null,
+ *   onTypeHint?: (text: string) => void
  * }} options
  */
 export function create(parent, options = {}) {
@@ -268,7 +341,9 @@ export function create(parent, options = {}) {
   const onTryEnter = options.onTryEnter || (() => false);
   const onHistory = options.onHistory || (() => false);
   const getCompletions = options.getCompletions || (() => []);
+  const getAttributes = options.getAttributes || (() => ({ items: [] }));
   const getSignature = options.getSignature || (() => null);
+  const onTypeHint = options.onTypeHint || (() => {});
   const themeCompartment = new Compartment();
   const placeholderCompartment = new Compartment();
   let currentTheme = options.theme === 'dark' ? 'dark' : 'light';
@@ -320,11 +395,12 @@ export function create(parent, options = {}) {
     bracketMatching(),
     closeBrackets(),
     autocompletion({
-      override: [makeCompletionSource(getCompletions)],
+      override: [makeCompletionSource(getCompletions, getAttributes)],
       activateOnTyping: true,
       closeOnBlur: true,
       maxRenderedOptions: 80,
     }),
+    typeHint(getAttributes, onTypeHint),
     signatureHelp(getSignature),
     indentUnit.of('    '),
     EditorState.tabSize.of(4),
