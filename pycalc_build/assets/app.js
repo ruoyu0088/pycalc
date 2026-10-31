@@ -226,6 +226,31 @@
     mobileSidebarOpen: false,
   };
 
+    // ---- 启动性能打点（仅 console 输出，不改行为） ----
+  const perf = {
+    marks: [],
+    mark(label) {
+      const now = (typeof performance !== 'undefined' && performance.now)
+        ? performance.now()
+        : Date.now();
+      const prev = this.marks[this.marks.length - 1];
+      this.marks.push({ label, t: now });
+      if (prev) {
+        console.log(`[perf] ${prev.label} → ${label}: ${(now - prev.t).toFixed(0)} ms`);
+      } else {
+        console.log(`[perf] start: ${label}`);
+      }
+    },
+    summary() {
+      console.table(this.marks.map((m, i) => ({
+        step: m.label,
+        delta_ms: i ? Math.round(m.t - this.marks[i - 1].t) : 0,
+        total_ms: Math.round(m.t - this.marks[0].t),
+      })));
+    },
+  };
+  window.__pycalcPerf = perf;
+  // ------------------------------------------------------
   let editor = null;
   let pyodide = null;
   let py = null;
@@ -406,10 +431,16 @@
     stderr: new TextDecoder('utf-8'),
   };
 
+  // 启动阶段先收集 Pyodide 输出，别把 [perf] 日志冲掉
+  const bootLogs = [];
+  window.__pycalcBootLogs = () => bootLogs;  
+
   function dispatchStream(kind, text) {
     if (!text) return;
     if (state.activeOutput && typeof state.activeOutput[kind] === 'function') {
       state.activeOutput[kind](text);
+    } else if (!state.ready) {
+      bootLogs.push(`[${kind}] ${text}`);
     } else {
       console.log(`[pyodide:${kind}]`, text);
     }
@@ -425,20 +456,25 @@
   async function loadRuntime() {
     setStage('overlay.runtime', { version: CFG.pyodideVersion, python: CFG.pythonVersion });
     await new Promise((resolve) => setTimeout(resolve, 0));
+    perf.mark('runtime:yield'); 
 
     let createPyodideModule;
     if (CFG.runtimeMode === 'esm') {
       const asmSource = $('pycalc-asm-mjs').textContent;
+      perf.mark('runtime:readAsmSource'); 
       const blobUrl = URL.createObjectURL(new Blob([asmSource], { type: 'text/javascript' }));
+      perf.mark('runtime:createBlob');  
       try {
         const mod = await import(blobUrl);
         createPyodideModule = mod.default;
       } finally {
         URL.revokeObjectURL(blobUrl);
       }
+      perf.mark('runtime:importAsmMjs'); 
     }
 
     setStage('overlay.packages', { libs: (CFG.libs || []).join(', ') || 'cloudpickle' });
+    perf.mark('runtime:packagesStage');
     const options = {
       indexURL: 'https://pycalc.local/',
       packages: CFG.packages,
@@ -459,6 +495,7 @@
         return buffer.byteLength;
       },
     });
+    perf.mark('runtime:setStreams');
 
     setStage('overlay.init');
     pyodide.globals.set('_pycalc_glue_source', PY_GLUE_SOURCE);
@@ -499,6 +536,7 @@ del _pycalc_glue_source
       listCompletions: pyodide.globals.get('_pycalc_completion_items'),
       attributeItems: pyodide.globals.get('_pycalc_attribute_items'),
     };
+    perf.mark('runtime:initGlue');   
   }
 
   // ---------------------------------------------------------------------
@@ -1155,13 +1193,16 @@ del _pycalc_glue_source
     setStage('overlay.restore');
     window.__pycalcBootStage = 'restore:start';
     await new Promise((resolve) => setTimeout(resolve, 0));
+    perf.mark('restore:yield');
     try {
       window.__pycalcBootStage = 'restore:reset';
       py.reset();
+      perf.mark('restore:reset');
       window.__pycalcBootStage = 'restore:libraries';
       const libResult = JSON.parse(py.setLibraries(
         JSON.stringify(state.libraries), JSON.stringify(libraryAliasMap())
       ));
+      perf.mark('restore:setLibraries');
       if (libResult.conflicts && libResult.conflicts.length) {
         banner('banner.libraryConflict', { names: libResult.conflicts.join(', ') }, 'warn', true);
       }
@@ -1171,6 +1212,7 @@ del _pycalc_glue_source
       window.__pycalcBootStage = 'restore:imports';
       const codes = state.history.map((entry) => entry.code).filter(Boolean);
       const replay = JSON.parse(py.replayImports(JSON.stringify(codes)));
+      perf.mark('restore:replayImports');
       if (replay.failed && replay.failed.length) {
         banner('banner.importReplay', { names: replay.failed.slice(0, 3).join('; ') });
       }
@@ -1190,6 +1232,7 @@ del _pycalc_glue_source
         const bytes = new Uint8Array(state.namespace);
         pyodide.FS.writeFile('/tmp/pycalc-restore.bin', bytes);
         const info = JSON.parse(py.restore('/tmp/pycalc-restore.bin'));
+        perf.mark('restore:snapshot');
         if (!info.ok) {
           banner('banner.restoreFailed', { error: info.error || I18n.t('error.unknown') }, 'warn', true);
         } else if (info.failed && info.failed.length) {
@@ -1210,6 +1253,7 @@ del _pycalc_glue_source
     if (py) {
       try { py.setPlotTheme(state.ui.theme); } catch (err) { console.warn('plot theme failed', err); }
     }
+    perf.mark('restore:inspector');
     window.__pycalcBootStage = 'restore:done';
   }
 
@@ -2129,10 +2173,12 @@ del _pycalc_glue_source
   }
 
   async function boot() {
+    perf.mark('boot:start');
     bindUi();
     I18n.setLanguage(detectLanguage());
     setOverlay('overlay.startTitle', 'overlay.startDetail');
     installFetchShim();
+    perf.mark('boot:start'); 
 
     setOverlay('overlay.startTitle', 'overlay.db');
     try {
@@ -2142,8 +2188,9 @@ del _pycalc_glue_source
       state.storage = new MemoryStorage();
       banner('banner.idbUnavailable', { error: err.message || err }, 'bad', true);
     }
-
+    perf.mark('boot:openStorage');
     state.ui = await loadUiMeta();
+    perf.mark('boot:loadUiMeta');
     I18n.setLanguage(state.ui.language);
     document.documentElement.dataset.theme = state.ui.theme;
     $('language-select').value = state.ui.language;
@@ -2152,11 +2199,18 @@ del _pycalc_glue_source
     window.__pycalcRunKeyMode = state.ui.runKey;
     applySidebar();
     applySessionBar();
+    perf.mark('boot:applyUiMeta');
 
     editor = createEditor();
+    perf.mark('boot:createEditor');
+
     applyLanguageToUi();
+    perf.mark('boot:applyLanguageToUi'); 
+
     state.sessions = (await state.storage.listSessions()) || [];
+    perf.mark('boot:listSessions');
     await restoreActiveSession();
+    perf.mark('boot:restoreActiveSession');
 
     setOverlay('overlay.startTitle', 'overlay.runtime', {
       version: CFG.pyodideVersion, python: CFG.pythonVersion,
@@ -2171,8 +2225,11 @@ del _pycalc_glue_source
         {},
         String((err && err.stack) || err)
       );
+      perf.mark('boot:loadRuntime:failed');
+      perf.summary(); 
       return;
     }
+    perf.mark('boot:loadRuntime'); 
 
     try {
       const test = JSON.parse(py.selfTest());
@@ -2182,9 +2239,11 @@ del _pycalc_glue_source
       console.warn('self test failed', err);
       setEngine('json');
     }
+    perf.mark('boot:selfTest'); 
 
     window.__pycalcBootStage = 'boot:apply-namespace';
     await applyNamespaceForActiveSession();
+    perf.mark('boot:applyNamespace');
     window.__pycalcBootStage = 'boot:ready';
 
     state.ready = true;
@@ -2196,6 +2255,8 @@ del _pycalc_glue_source
     initMobileKeyboardUi();
     if (editor) editor.focus();
     if (!state.history.length) renderConsole();
+    perf.mark('boot:ready');
+    perf.summary();
   }
 
   // Used by the CodeMirror Mod-Enter keymap and developer tooling.
