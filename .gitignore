@@ -1,0 +1,20 @@
+# Build artefacts and local caches
+cache/
+dist/
+gui_settings.json
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Node
+frontend/node_modules/
+
+# Test artefacts
+tests/artifacts/
+
+# Editor backup files
+*~
+*.swp

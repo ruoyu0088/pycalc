@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PyCalc</title>
+<style>
+__PYCALC_CSS__
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-name">PyCalc</span>
+      <span class="brand-sub">离线 Python 计算器</span>
+    </div>
+    <div class="session-bar">
+      <label for="session-select" class="session-label">会话</label>
+      <select id="session-select" title="切换会话"></select>
+      <button id="session-new" class="icon-btn" title="新建会话">＋</button>
+      <button id="session-rename" class="icon-btn" title="重命名当前会话">✎</button>
+      <button id="session-delete" class="icon-btn danger" title="删除当前会话">删</button>
+    </div>
+    <div class="statusbar">
+      <span id="engine-badge" class="badge" title="会话序列化引擎">初始化中</span>
+      <span id="save-status" class="save-status"></span>
+    </div>
+  </header>
+
+  <main id="history" class="history" aria-live="polite"></main>
+
+  <section class="composer">
+    <div class="editor-shell">
+      <textarea id="editor" spellcheck="false" autocomplete="off" autocapitalize="off"
+        placeholder="输入 Python 代码，Ctrl+Enter 运行&#10;&#10;例如：&#10;import numpy as np&#10;np.arange(10).mean()"></textarea>
+    </div>
+    <div class="composer-actions">
+      <span class="hint">Ctrl+Enter / Cmd+Enter 运行</span>
+      <button id="run" class="run-btn" disabled>运行</button>
+    </div>
+  </section>
+
+  <div id="banner" class="banner hidden"></div>
+  <div id="toast" class="toast hidden"></div>
+
+  <div id="overlay" class="overlay">
+    <div class="overlay-card">
+      <div class="spinner" aria-hidden="true"></div>
+      <h2 id="overlay-title">正在启动 PyCalc</h2>
+      <p id="overlay-detail">准备资源…</p>
+      <pre id="overlay-error" class="overlay-error hidden"></pre>
+      <button id="overlay-retry" class="secondary hidden">重新加载页面</button>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="pycalc-config">__PYCALC_CONFIG__</script>
+<script type="application/json" id="pycalc-assets">__PYCALC_ASSETS__</script>
+<script type="text/python" id="pycalc-glue">__PYCALC_GLUE__</script>
+__PYCALC_ASM__
+<script>__PYCALC_PYODIDE_JS__</script>
+__PYCALC_EDITOR_JS__
+<script>__PYCALC_APP_JS__</script>
+</body>
+</html>
