@@ -780,6 +780,9 @@ def _pycalc_run(code):
                 globals_dict["_"] = value
                 result = _pycalc_truncate(repr(value))
                 result_mathml, result_latex = _pycalc_sympy_math(value)
+                # ans always points at the most recent non-None cell result;
+                # None / statements / errors leave the previous value intact.
+                globals_dict["ans"] = value
         else:
             exec(compile(tree, "<cell>", "exec"), globals_dict)
             result = None

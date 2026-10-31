@@ -101,6 +101,21 @@ def test_minimal_314() -> None:
         assert browser.eval("document.querySelectorAll('.entry').length") >= 2
         assert_no_network(browser)
 
+        # ans keeps the latest non-None cell result
+        assert browser.run_cell("1 + 1")["result"] == "2"
+        assert any(row["name"] == "ans" and row["value"] == "2"
+                   for row in browser.eval("window.__pycalc.variables()"))
+        assert browser.run_cell("print('side effect')")["result"] is None
+        assert browser.run_cell("ans")["result"] == "2"
+        assert browser.run_cell("None")["result"] is None
+        assert browser.run_cell("ans")["result"] == "2"
+        assert browser.run_cell("ans * 2")["result"] == "4"
+        assert browser.run_cell("1 / 0")["status"] == "error"
+        assert browser.run_cell("ans")["result"] == "4"
+        assert browser.run_cell("0")["result"] == "0"
+        assert browser.run_cell("ans")["result"] == "0"
+        assert browser.run_cell("2 + 2")["result"] == "4"
+
         run_and_check(
             browser,
             "def f(x):\n    return x * 2\nprint(f(21))",
@@ -109,6 +124,7 @@ def test_minimal_314() -> None:
         browser.eval("window.__pycalc.saveNow()")
         browser.call("Page.reload", {"ignoreCache": True})
         browser.wait_ready()
+        assert browser.run_cell("ans")["result"] == "4"
         run_and_check(browser, "print(f(21))", "42\n")
         browser.screenshot(ART / "min314.png")
 
