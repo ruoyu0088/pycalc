@@ -300,6 +300,15 @@ def test_new_features() -> None:
         assert "reshape" in popup, popup
         assert browser.eval("document.querySelector('#type-hint')?.textContent") == "arr : numpy.ndarray"
 
+        # static inference even before the assignment is executed
+        browser.eval("window.__pycalc.setEditorText('pending = np.linspace(1, 2)\\npending')")
+        browser.eval("document.querySelector('.cm-content').focus()")
+        browser.call("Input.insertText", {"text": ".re"})
+        time.sleep(0.4)
+        popup = browser.eval("document.querySelector('.cm-tooltip-autocomplete')?.textContent || ''")
+        assert "reshape" in popup, popup
+        assert browser.eval("document.querySelector('#type-hint')?.textContent") == "pending : numpy.ndarray"
+
         browser.eval("window.__pycalc.setEditorText('')")
         browser.eval("document.querySelector('.cm-content').focus()")
         browser.call("Input.insertText", {"text": "np.lin"})

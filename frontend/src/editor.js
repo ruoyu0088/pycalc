@@ -149,7 +149,7 @@ function makeCompletionSource(getCompletions, getAttributes) {
       const expr = word.text.slice(0, dot);
       const prefix = word.text.slice(dot + 1);
       if (!expr) return null;
-      const data = getAttributes(expr);
+      const data = getAttributes(expr, context.state.doc.sliceString(0, context.pos));
       if (!data || !data.items || data.items.length === 0) return null;
       // Hide dunders/private members until the user explicitly types "_".
       const options = prefix.startsWith('_')
@@ -205,7 +205,10 @@ function typeHint(getAttributes, onTypeHint) {
           this.set('');
           return;
         }
-        const data = getAttributes(context.expr);
+        const data = getAttributes(
+          context.expr,
+          update.state.doc.sliceString(0, update.state.selection.main.head)
+        );
         if (!data || !data.type) {
           this.set('');
           return;

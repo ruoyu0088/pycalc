@@ -1210,19 +1210,22 @@ del _pycalc_glue_source
     return items;
   }
 
-  function getAttributeCompletions(expr) {
+  function getAttributeCompletions(expr, code = '') {
     const key = String(expr || '');
     if (state.attributeCache.has(key)) return state.attributeCache.get(key);
-    const empty = { expr: key, type: null, items: [] };
+    const empty = { expr: key, type: null, source: 'live', items: [] };
     if (!py || !state.ready || !key) return empty;
     try {
-      const data = JSON.parse(py.attributeItems(key));
+      const data = JSON.parse(py.attributeItems(key, String(code || '')));
       const value = {
         expr: data.expr || key,
         type: data.type || null,
+        source: data.source || 'live',
         items: Array.isArray(data.items) ? data.items : [],
       };
-      state.attributeCache.set(key, value);
+      // Live objects are stable until the next execution; static inference
+      // depends on the editor text, so it is not cached across edits.
+      if (value.source === 'live') state.attributeCache.set(key, value);
       return value;
     } catch (err) {
       console.warn('attribute completion failed', err);

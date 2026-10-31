@@ -551,24 +551,139 @@ def _pycalc_completion_items():
     return json.dumps(rows[:500], ensure_ascii=False)
 
 
-def _pycalc_attribute_items(expr):
+_STATIC_CONSTRUCTORS = {}
+for _pycalc_name in (
+    "array", "asarray", "asanyarray", "zeros", "ones", "empty", "full",
+    "arange", "linspace", "logspace", "geomspace", "identity", "eye", "diag",
+    "fromiter", "frombuffer", "copy", "concatenate", "stack", "hstack",
+    "vstack", "dstack", "column_stack", "block",
+):
+    _STATIC_CONSTRUCTORS[f"numpy.{_pycalc_name}"] = ("numpy", "ndarray")
+for _pycalc_name in (
+    "rand", "randn", "random", "uniform", "normal", "standard_normal",
+    "randint", "choice",
+):
+    _STATIC_CONSTRUCTORS[f"numpy.random.{_pycalc_name}"] = ("numpy", "ndarray")
+_STATIC_CONSTRUCTORS["sympy.symbols"] = ("sympy", "Symbol")
+_STATIC_CONSTRUCTORS["sympy.Symbol"] = ("sympy", "Symbol")
+_STATIC_CONSTRUCTORS["matplotlib.pyplot.figure"] = ("matplotlib.figure", "Figure")
+
+
+def _pycalc_dotted_name(node):
+    parts = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name):
+        parts.append(node.id)
+        return ".".join(reversed(parts))
+    return None
+
+
+def _pycalc_static_expr_type(node, user_globals):
+    if isinstance(node, ast.List):
+        return list
+    if isinstance(node, ast.Tuple):
+        return tuple
+    if isinstance(node, ast.Dict):
+        return dict
+    if isinstance(node, ast.Set):
+        return set
+    if isinstance(node, ast.Constant):
+        return type(node.value)
+    if isinstance(node, ast.JoinedStr):
+        return str
+    if isinstance(node, ast.Call):
+        path = _pycalc_dotted_name(node.func)
+        if not path:
+            return None
+        parts = path.split(".")
+        root = user_globals.get(parts[0])
+        if isinstance(root, types.ModuleType):
+            parts[0] = root.__name__
+        target = _STATIC_CONSTRUCTORS.get(".".join(parts))
+        if not target:
+            return None
+        module_name, class_name = target
+        module = sys.modules.get(module_name)
+        if module is None:
+            try:
+                module = __import__(module_name, fromlist=[class_name])
+            except Exception:
+                return None
+        try:
+            return getattr(module, class_name)
+        except Exception:
+            return None
+    if isinstance(node, (ast.Name, ast.Attribute, ast.Subscript)):
+        try:
+            return type(eval(compile(ast.Expression(node), "<completion>", "eval"), user_globals, user_globals))
+        except Exception:
+            return None
+    return None
+
+
+def _pycalc_static_assignment_type(name, code):
+    prefix = str(code or "").rsplit("\n", 1)[0]
+    if not prefix.strip():
+        return None
+    try:
+        tree = ast.parse(prefix)
+    except Exception:
+        return None
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            if any(isinstance(target, ast.Name) and target.id == name for target in node.targets):
+                found.append((getattr(node, "lineno", 0), node))
+        elif isinstance(node, ast.AnnAssign):
+            if isinstance(node.target, ast.Name) and node.target.id == name:
+                found.append((getattr(node, "lineno", 0), node))
+    if not found:
+        return None
+    node = sorted(found, key=lambda item: item[0])[-1][1]
+    if isinstance(node, ast.AnnAssign):
+        try:
+            annotation = eval(
+                compile(ast.Expression(node.annotation), "<completion>", "eval"),
+                _pycalc_user_globals(),
+                _pycalc_user_globals(),
+            )
+        except Exception:
+            return None
+        return annotation if isinstance(annotation, type) else None
+    return _pycalc_static_expr_type(node.value, _pycalc_user_globals())
+
+
+def _pycalc_type_label(value):
+    if isinstance(value, types.ModuleType):
+        return f"module {value.__name__}"
+    cls = value if isinstance(value, type) else type(value)
+    module = str(getattr(cls, "__module__", ""))
+    name = str(getattr(cls, "__qualname__", cls.__name__))
+    return name if module in ("builtins", "__main__") else f"{module.split('.')[0]}.{name}"
+
+
+def _pycalc_attribute_items(expr, code=""):
     parts = str(expr).split(".")
     if not parts or any(not part.isidentifier() for part in parts):
         return json.dumps({"expr": str(expr), "type": None, "items": []})
     user_globals = _pycalc_user_globals()
+    source = "live"
+    found_live = True
     try:
         obj = eval(str(expr), user_globals, user_globals)
     except Exception:
-        return json.dumps({"expr": str(expr), "type": None, "items": []})
+        found_live = False
+        obj = None
+    if not found_live:
+        if len(parts) == 1:
+            obj = _pycalc_static_assignment_type(str(expr), code)
+            source = "static" if obj is not None else "live"
+        if obj is None:
+            return json.dumps({"expr": str(expr), "type": None, "items": []})
 
-    if isinstance(obj, types.ModuleType):
-        type_label = f"module {obj.__name__}"
-    else:
-        cls = type(obj)
-        module = str(getattr(cls, "__module__", ""))
-        name = str(getattr(cls, "__qualname__", cls.__name__))
-        type_label = name if module in ("builtins", "__main__") else f"{module.split('.')[0]}.{name}"
-
+    type_label = _pycalc_type_label(obj)
     parent_is_module = isinstance(obj, types.ModuleType)
     rows = []
     for name in dir(obj):
@@ -590,7 +705,12 @@ def _pycalc_attribute_items(expr):
         elif inspect.isroutine(value):
             kind = "function" if parent_is_module else "method"
             try:
-                detail = str(inspect.signature(value))
+                signature = inspect.signature(value)
+                if source == "static" and isinstance(obj, type):
+                    params = list(signature.parameters.values())
+                    if params and params[0].name in ("self", "cls"):
+                        signature = signature.replace(parameters=params[1:])
+                detail = str(signature)
             except Exception:
                 detail = "(...)"
         else:
@@ -599,17 +719,12 @@ def _pycalc_attribute_items(expr):
                 detail = _pycalc_type_name(value)
             except Exception:
                 detail = "object"
-        info = f"{expr} : {type_label}"
-        if kind in ("function", "method", "class"):
-            info += f"\n{name}{detail if detail.startswith('(') else ''}"
-        else:
-            info += f"\n{name} : {detail}"
-        rows.append({"label": name, "type": kind, "detail": detail, "info": info})
+        rows.append({"label": name, "type": kind, "detail": detail})
 
     # Public members first; dunders are still available when the user types "_".
     rows.sort(key=lambda row: (row["label"].startswith("_"), row["label"].lower()))
     return json.dumps(
-        {"expr": str(expr), "type": type_label, "items": rows[:1200]},
+        {"expr": str(expr), "type": type_label, "source": source, "items": rows[:1200]},
         ensure_ascii=False,
     )
 
