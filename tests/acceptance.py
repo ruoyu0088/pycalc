@@ -93,6 +93,7 @@ def test_minimal_314() -> None:
         version = browser.eval("window.__pycalcVersion")
         assert version["pyodide"] == "314.0.7" and version["python"] == "3.14.2", version
         assert browser.eval("window.__pycalc.engine()") == "cloudpickle"
+        assert browser.eval("document.getElementById('sympy-output-wrap').classList.contains('hidden')")
         run_and_check(browser, "print(1 + 1)", "2\n")
         assert browser.eval("window.__pycalc.getEditorValue()") == ""
         run_and_check(browser, "print(sin(pi / 2))", "1.0\n")
@@ -177,6 +178,22 @@ def test_full_314() -> None:
             "import sympy as sp\nx = sp.symbols('x')\nprint(sp.integrate(x**2, x))",
             "x**3/3\n",
         )
+        assert browser.eval("!document.getElementById('sympy-output-wrap').classList.contains('hidden')")
+        sympy_result = browser.run_cell("sp.integrate(x**2, x)")
+        assert sympy_result["result"] == "x**3/3", sympy_result
+        entry = browser.eval("window.__pycalc.lastEntry()")
+        assert "<math" in entry["resultMathML"], entry
+        assert browser.eval("document.querySelectorAll('pre.result').length") == 1
+        assert browser.eval("document.querySelectorAll('.math-result math').length") == 0
+        browser.eval("window.__pycalc.setSympyOutput('math')")
+        time.sleep(0.2)
+        assert browser.eval("document.querySelectorAll('pre.result').length") == 0
+        assert browser.eval("document.querySelectorAll('.math-result math').length") == 1
+        browser.screenshot(ART / "math-mode.png")
+        browser.eval("window.__pycalc.setSympyOutput('text')")
+        time.sleep(0.2)
+        assert browser.eval("document.querySelectorAll('pre.result').length") == 1
+
         run_and_check(
             browser,
             "import numpy as np\nprint(np.array([1, 2, 3]).mean())",
@@ -212,6 +229,9 @@ def test_full_0278() -> None:
             "import sympy as sp\nx = sp.symbols('x')\nprint(sp.integrate(x**2, x))",
             "x**3/3\n",
         )
+        sympy_result = browser.run_cell("sp.integrate(x**2, x)")
+        assert sympy_result["result"] == "x**3/3", sympy_result
+        assert "<math" in browser.eval("window.__pycalc.lastEntry().resultMathML")
         run_and_check(
             browser,
             "import numpy as np\nprint(np.array([1, 2, 3]).mean())",
@@ -447,18 +467,23 @@ def test_new_features() -> None:
         browser.wait_ready()
         assert browser.eval("window.__pycalc.active()")["libraries"] == ["sympy"]
         run_and_check(browser, "print(sp.symbols('x'))", "x\n")
+        browser.run_cell("sp.symbols('z')")
 
         # global UI preferences survive a reload; library choice is per session
         browser.eval("window.__pycalc.setLanguage('en')")
         browser.eval("window.__pycalc.setTheme('light')")
         browser.eval("window.__pycalc.setRunKey('enter')")
+        browser.eval("window.__pycalc.setSympyOutput('math')")
         browser.eval("new Promise(resolve => setTimeout(resolve, 400))")
         browser.call("Page.reload", {"ignoreCache": True})
         browser.wait_ready(timeout=180)
         ui = browser.eval("window.__pycalc.ui()")
         assert ui["language"] == "en" and ui["theme"] == "light" and ui["runKey"] == "enter", ui
+        assert ui["sympyOutput"] == "math", ui
         assert abs(float(ui["sidebarWidth"]) - width_after) < 2, (ui, width_after)
         assert browser.eval("document.querySelector('.side-card h3').textContent") == "Variables"
+        assert browser.eval("document.getElementById('sympy-output').value") == "math"
+        assert browser.eval("document.querySelectorAll('.math-result math').length") >= 1
         assert browser.eval("document.documentElement.dataset.theme") == "light"
         assert browser.eval("window.__pycalc.active()")["libraries"] == ["sympy"]
         assert_no_network(browser)

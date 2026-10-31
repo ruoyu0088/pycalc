@@ -738,6 +738,32 @@ def _pycalc_truncate(text):
     return text[:_PYCALC_MAX_RESULT] + f"\n... ({omitted} characters omitted)"
 
 
+def _pycalc_sympy_math(value):
+    try:
+        if not str(type(value).__module__).startswith("sympy"):
+            return None, None
+        import sympy
+        from sympy.printing.mathml import mathml as mathml_printer
+
+        if not isinstance(value, sympy.Basic):
+            return None, None
+        markup = mathml_printer(value, printer="presentation")
+        if not str(markup).lstrip().startswith("<math"):
+            markup = (
+                '<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">'
+                + str(markup)
+                + "</math>"
+            )
+        latex = sympy.latex(value)
+        if len(markup) > 400_000:
+            markup = None
+        if latex is not None:
+            latex = str(latex)[:20000]
+        return markup, latex
+    except Exception:
+        return None, None
+
+
 def _pycalc_run(code):
     globals_dict = _pycalc_user_globals()
     try:
@@ -750,13 +776,26 @@ def _pycalc_run(code):
             value = eval(compile(expression, "<cell>", "eval"), globals_dict)
             if value is None:
                 result = None
+                result_mathml = None
+                result_latex = None
             else:
                 globals_dict["_"] = value
                 result = _pycalc_truncate(repr(value))
+                result_mathml, result_latex = _pycalc_sympy_math(value)
         else:
             exec(compile(tree, "<cell>", "exec"), globals_dict)
             result = None
-        return json.dumps({"ok": True, "result": result}, ensure_ascii=False)
+            result_mathml = None
+            result_latex = None
+        return json.dumps(
+            {
+                "ok": True,
+                "result": result,
+                "resultMathML": result_mathml,
+                "resultLatex": result_latex,
+            },
+            ensure_ascii=False,
+        )
     except BaseException:
         return json.dumps(
             {"ok": False, "error": _pycalc_truncate(traceback.format_exc())},

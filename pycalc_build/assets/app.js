@@ -165,6 +165,7 @@
     runKey: 'ctrl-enter',
     sidebarHidden: false,
     sidebarWidth: 292,
+    sympyOutput: 'text',
   };
 
   const state = {
@@ -665,6 +666,7 @@ del _pycalc_glue_source
       runKey,
       sidebarHidden: Boolean(meta.sidebarHidden),
       sidebarWidth: clampSidebarWidth(meta.sidebarWidth),
+      sympyOutput: meta.sympyOutput === 'math' ? 'math' : 'text',
     };
   }
 
@@ -678,6 +680,7 @@ del _pycalc_glue_source
         runKey: state.ui.runKey,
         sidebarHidden: state.ui.sidebarHidden,
         sidebarWidth: state.ui.sidebarWidth,
+        sympyOutput: state.ui.sympyOutput,
       });
     } catch (err) {
       console.warn('could not save UI settings', err);
@@ -1370,6 +1373,35 @@ del _pycalc_glue_source
     }
   }
 
+  function mathResult(mathml) {
+    if (!mathml || typeof DOMParser === 'undefined') return null;
+    try {
+      const parsed = new DOMParser().parseFromString(mathml, 'application/xml');
+      if (parsed.querySelector('parsererror')) return null;
+      const root = parsed.documentElement;
+      if (!root || String(root.nodeName).toLowerCase() !== 'math') return null;
+      const wrapper = el('div', 'math-result');
+      const imported = document.importNode(root, true);
+      for (const bad of imported.querySelectorAll('script,iframe,object,embed,foreignObject')) {
+        bad.remove();
+      }
+      for (const node of [imported, ...imported.querySelectorAll('*')]) {
+        for (const attr of [...node.attributes]) {
+          const name = attr.name.toLowerCase();
+          if (name.startsWith('on')) node.removeAttribute(attr.name);
+          if ((name === 'href' || name === 'xlink:href') && /^\s*javascript:/i.test(attr.value)) {
+            node.removeAttribute(attr.name);
+          }
+        }
+      }
+      wrapper.appendChild(imported);
+      return wrapper;
+    } catch (err) {
+      console.warn('mathml render failed', err);
+      return null;
+    }
+  }
+
   function makeCell(entry) {
     const cell = el('div', 'entry');
     const inputRow = el('div', 'io-row');
@@ -1384,7 +1416,9 @@ del _pycalc_glue_source
       if (entry.stdout) body.appendChild(el('pre', 'stream', entry.stdout));
       if (entry.stderr) body.appendChild(el('pre', 'stream stderr', entry.stderr));
       if (entry.result !== null && entry.result !== undefined) {
-        body.appendChild(el('pre', 'result', entry.result));
+        const math = state.ui.sympyOutput === 'math' ? mathResult(entry.resultMathML) : null;
+        if (math) body.appendChild(math);
+        else body.appendChild(el('pre', 'result', entry.result));
       }
       if (entry.error) body.appendChild(el('pre', 'error', entry.error));
       if (entry.images && entry.images.length) {
@@ -1570,6 +1604,8 @@ del _pycalc_glue_source
       stdout: '',
       stderr: '',
       result: null,
+      resultMathML: null,
+      resultLatex: null,
       error: null,
       images: [],
     };
@@ -1585,6 +1621,8 @@ del _pycalc_glue_source
       const result = JSON.parse(py.run(code));
       entry.status = result.ok ? 'ok' : 'error';
       entry.result = result.ok ? result.result : null;
+      entry.resultMathML = result.ok ? (result.resultMathML || null) : null;
+      entry.resultLatex = result.ok ? (result.resultLatex || null) : null;
       entry.error = result.ok ? null : result.error;
       try {
         const images = JSON.parse(py.figures());
@@ -1660,6 +1698,21 @@ del _pycalc_glue_source
     if (persist) saveUiMeta();
   }
 
+  function renderSympyControl() {
+    const wrap = $('sympy-output-wrap');
+    if (!wrap) return;
+    wrap.classList.toggle('hidden', !AVAILABLE_LIB_IDS.has('sympy'));
+    const select = $('sympy-output');
+    if (select) select.value = state.ui.sympyOutput;
+  }
+
+  function applySympyOutput(mode, persist = true) {
+    state.ui.sympyOutput = mode === 'math' ? 'math' : 'text';
+    renderSympyControl();
+    if (!state.busy) renderConsole();
+    if (persist) saveUiMeta();
+  }
+
   function clampSidebarWidth(value) {
     const max = Math.max(220, Math.min(520, window.innerWidth * 0.45));
     const parsed = Number(value);
@@ -1699,6 +1752,7 @@ del _pycalc_glue_source
     renderStatus();
     updateBusyUi();
     renderLibraryBar();
+    renderSympyControl();
     renderConsole();
     refreshInspector();
     renderOverlay();
@@ -1720,6 +1774,7 @@ del _pycalc_glue_source
     $('overlay-retry').addEventListener('click', () => location.reload());
     $('language-select').addEventListener('change', (event) => setLanguage(event.target.value));
     $('run-key').addEventListener('change', (event) => applyRunKey(event.target.value));
+    $('sympy-output').addEventListener('change', (event) => applySympyOutput(event.target.value));
     $('theme-toggle').addEventListener('click', () => {
       applyTheme(state.ui.theme === 'dark' ? 'light' : 'dark');
     });
@@ -1987,6 +2042,7 @@ del _pycalc_glue_source
     setTheme: (theme) => applyTheme(theme),
     setPlotTheme: (theme) => (py ? py.setPlotTheme(theme) : null),
     setRunKey: (key) => applyRunKey(key),
+    setSympyOutput: (mode) => applySympyOutput(mode),
     selectLibraries: async (ids) => {
       state.libraries = (ids || []).filter((id) => AVAILABLE_LIB_IDS.has(id));
       renderLibraryBar();

@@ -372,6 +372,20 @@ pre.stream { color: var(--text); }
 pre.stream.stderr { color: var(--red); }
 pre.result { color: var(--text); }
 
+.math-result {
+  padding: 3px 0;
+  overflow-x: auto;
+  color: var(--text);
+  font-size: 1.16em;
+  line-height: 1.5;
+}
+
+.math-result math {
+  font-family: "STIX Two Math", "Cambria Math", "Latin Modern Math", serif;
+}
+
+.math-result math[display="block"] { display: block; }
+
 pre.error {
   color: var(--red);
   background: var(--red-soft);
@@ -455,6 +469,16 @@ pre.error {
 .lib-chip.checked { border-color: var(--accent); background: var(--accent-soft); }
 
 .library-note { color: var(--muted); font-size: 11.5px; }
+
+.sympy-output {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.sympy-output.hidden { display: none; }
 
 .editor-shell {
   max-width: 1180px;
