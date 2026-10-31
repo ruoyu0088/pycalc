@@ -127,7 +127,7 @@ class PyCalcGui:
                 except tk.TclError:
                     continue
         try:
-            self.root.tk.call("tk", "scaling", 1.15)
+            self.root.tk.call("tk", "scaling", 1.5)
         except tk.TclError:
             pass
         style.configure("Title.TLabel", font=("Segoe UI", 15, "bold"))
