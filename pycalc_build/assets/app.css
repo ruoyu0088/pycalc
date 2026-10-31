@@ -475,15 +475,36 @@ pre.error {
 .cm-editor.cm-focused { outline: none; }
 
 /* Make the selection clearly visible in both themes. */
+.cm-selectionLayer {
+  z-index: 3 !important;
+}
+
+.cm-content {
+  position: relative;
+  z-index: 2;
+}
+
+.cm-cursorLayer {
+  z-index: 4 !important;
+}
+
 .cm-editor .cm-selectionBackground {
-  background-color: #b6d4fe !important;
+  background-color: rgba(96, 165, 250, .60) !important;
 }
 
 [data-theme="dark"] .cm-editor .cm-selectionBackground {
-  background-color: #4a6fa5 !important;
+  background-color: rgba(59, 130, 246, .70) !important;
 }
 
-.cm-editor .cm-content ::selection { background: transparent; }
+.cm-content ::selection {
+  background-color: rgba(96, 165, 250, .60) !important;
+  color: inherit !important;
+}
+
+[data-theme="dark"] .cm-content ::selection {
+  background-color: rgba(59, 130, 246, .70) !important;
+  color: inherit !important;
+}
 
 /* Autocomplete popup */
 .cm-tooltip {
