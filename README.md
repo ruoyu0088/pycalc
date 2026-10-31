@@ -7,6 +7,7 @@ pycalc-app/
 ├─ start.bat        ← 双击启动 Tkinter 构建器
 ├─ gui.py           ← 构建器 GUI
 ├─ build.py         ← 命令行入口
+├─ .github/workflows/deploy.yml ← GitHub Pages 自动构建/部署
 ├─ pycalc_build/    ← 构建管线
 ├─ frontend/        ← CodeMirror 源码（产物已提交，构建 HTML 不需要 Node）
 ├─ tests/           ← 单元测试与浏览器验收
@@ -49,6 +50,36 @@ python build.py --libs numpy --lang ja --output dist\pycalc-ja.html
 ```
 
 构建完成会打印最终 HTML 的**精确字节数**、Python 版本、依赖闭包和耗时。加 `--json` 可得到机器可读结果（日志走 stderr）。
+
+---
+
+## GitHub Pages 自动部署
+
+仓库已包含 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)。**仓库根目录应该是包含 `build.py` 的 `pycalc-app/`**（不要把父目录的 `reference/`、`agent.md` 一起作为仓库根）。把项目推到 GitHub 后即可自动构建并发布：
+
+1. 推送到默认分支 `main` 或 `master`（也可以在 Actions 页面手动运行 `Build and deploy PyCalc`）。
+2. 一次性打开仓库 **Settings → Pages → Build and deployment**，把 **Source** 设为 **GitHub Actions**。GitHub 的 API 允许用 PAT 自动开启 Pages，但默认 `GITHUB_TOKEN` 不能完成“首次启用”，所以这里需要手动点一次；之后每次 push 都会全自动发布。若希望首次也零点击，可创建一个有 Pages 写权限的 PAT，保存为 `PAGES_TOKEN`，再在 `configure-pages` 步骤加 `token: ${{ secrets.PAGES_TOKEN }}` 和 `enablement: true`。
+3. workflow 会：
+   - 运行核心单元测试；
+   - 下载/复用缓存的 Pyodide 运行时和 wheel；
+   - 构建全量 HTML；
+   - 输出 `_site/index.html`；
+   - 通过 `actions/deploy-pages` 发布。
+4. 发布完成后，Actions 的 `deploy` 任务会给出 URL，格式为：
+
+   `https://<用户名>.github.io/<仓库名>/`
+
+默认构建配置在 workflow 顶部的 `env` 中：
+
+```yaml
+env:
+  PYCALC_VERSION: "314.0.7"
+  PYCALC_LIBS: "numpy sympy matplotlib"
+```
+
+想改变内联库或 Pyodide 版本时改这里即可。首次运行需要从 CDN 下载运行时和 wheel，之后会复用 `cache/`；HTML 约 34 MB，在 GitHub Pages 的容量限制内。
+
+注意：Pages 站点是独立的 `https://` origin，它的 IndexedDB 会话与本地 `file://` 打开的 HTML **不会共享**；这是浏览器同源策略决定的。
 
 ---
 

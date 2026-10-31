@@ -1,0 +1,73 @@
+name: Build and deploy PyCalc
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  PYCALC_VERSION: "314.0.7"
+  PYCALC_LIBS: "numpy sympy matplotlib"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Prepare cache directory
+        run: mkdir -p cache
+
+      - name: Cache Pyodide runtime and wheels
+        uses: actions/cache@v4
+        with:
+          path: cache
+          key: pycalc-cache-v1-${{ runner.os }}-${{ env.PYCALC_VERSION }}-full
+          restore-keys: |
+            pycalc-cache-v1-${{ runner.os }}-${{ env.PYCALC_VERSION }}-
+
+      - name: Build the single-file HTML
+        run: |
+          python -m unittest discover -s tests -p "test_core.py" -v
+          mkdir -p _site
+          python build.py \
+            --libs $PYCALC_LIBS \
+            --pyodide-version "$PYCALC_VERSION" \
+            --lang en \
+            --output _site/index.html
+          touch _site/.nojekyll
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload the Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

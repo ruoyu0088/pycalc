@@ -1,6 +1,7 @@
 # Build artefacts and local caches
 cache/
 dist/
+_site/
 gui_settings.json
 
 # Python
