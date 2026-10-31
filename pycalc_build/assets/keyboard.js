@@ -168,7 +168,7 @@
     collapse.setAttribute('role', 'button');
     collapse.setAttribute('tabindex', '-1');
     collapse.className = 'mk-tab mk-collapse-tab';
-    collapse.textContent = state.collapsed ? '⌃' : '⌄';
+    collapse.textContent = state.collapsed ? '▲' : '▼';
     collapse.setAttribute(
       'aria-label',
       t(state.collapsed ? 'keyboard.show' : 'keyboard.hide')
@@ -187,7 +187,7 @@
     if (panel) panel.classList.toggle('hidden', state.collapsed);
     const button = document.querySelector('.mk-collapse-tab');
     if (!button) return;
-    button.textContent = state.collapsed ? '⌃' : '⌄';
+    button.textContent = state.collapsed ? '▲' : '▼';
     button.title = t(state.collapsed ? 'keyboard.show' : 'keyboard.hide');
     button.setAttribute('aria-label', button.title);
     button.setAttribute('aria-expanded', String(!state.collapsed));

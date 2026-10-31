@@ -1855,7 +1855,7 @@ del _pycalc_glue_source
     document.body.classList.toggle('session-bar-hidden', hidden);
     const button = $('session-bar-toggle');
     if (!button) return;
-    button.textContent = hidden ? '⌄' : '⌃';
+    button.textContent = hidden ? '▼' : '▲';
     button.title = I18n.t(hidden ? 'session.showBar' : 'session.hideBar');
     button.setAttribute('aria-label', button.title);
     button.setAttribute('aria-expanded', String(!hidden));
