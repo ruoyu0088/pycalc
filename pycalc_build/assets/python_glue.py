@@ -745,8 +745,6 @@ def _pycalc_sympy_math(value):
         import sympy
         from sympy.printing.mathml import mathml as mathml_printer
 
-        if not isinstance(value, sympy.Basic):
-            return None, None
         markup = mathml_printer(value, printer="presentation")
         if not str(markup).lstrip().startswith("<math"):
             markup = (

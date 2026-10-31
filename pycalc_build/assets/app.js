@@ -1376,10 +1376,12 @@ del _pycalc_glue_source
   function mathResult(mathml) {
     if (!mathml || typeof DOMParser === 'undefined') return null;
     try {
-      const parsed = new DOMParser().parseFromString(mathml, 'application/xml');
-      if (parsed.querySelector('parsererror')) return null;
-      const root = parsed.documentElement;
-      if (!root || String(root.nodeName).toLowerCase() !== 'math') return null;
+      // SymPy emits MathML named entities such as &InvisibleTimes;, which
+      // the XML parser rejects. The HTML parser resolves them and keeps the
+      // MathML namespace, so use it and extract the <math> element.
+      const parsed = new DOMParser().parseFromString(mathml, 'text/html');
+      const root = parsed.querySelector('math');
+      if (!root) return null;
       const wrapper = el('div', 'math-result');
       const imported = document.importNode(root, true);
       for (const bad of imported.querySelectorAll('script,iframe,object,embed,foreignObject')) {

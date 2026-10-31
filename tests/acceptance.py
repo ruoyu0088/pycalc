@@ -189,10 +189,17 @@ def test_full_314() -> None:
         time.sleep(0.2)
         assert browser.eval("document.querySelectorAll('pre.result').length") == 0
         assert browser.eval("document.querySelectorAll('.math-result math').length") == 1
+
+        # &InvisibleTimes; is a MathML named entity that the XML parser
+        # rejects; this expression must still render as math, not fall back.
+        expand = browser.run_cell("x, y = sp.symbols('x y')\nsp.expand((x + y)**3)")
+        assert expand["result"] == "x**3 + 3*x**2*y + 3*x*y**2 + y**3", expand
+        assert "&InvisibleTimes;" in browser.eval("window.__pycalc.lastEntry().resultMathML")
+        assert browser.eval("document.querySelectorAll('.math-result math').length") == 2
         browser.screenshot(ART / "math-mode.png")
         browser.eval("window.__pycalc.setSympyOutput('text')")
         time.sleep(0.2)
-        assert browser.eval("document.querySelectorAll('pre.result').length") == 1
+        assert browser.eval("document.querySelectorAll('pre.result').length") == 2
 
         run_and_check(
             browser,
@@ -329,10 +336,11 @@ def test_new_features() -> None:
         assert "reshape" in popup, popup
         assert browser.eval("document.querySelector('#type-hint')?.textContent") == "pending : numpy.ndarray"
 
-        browser.eval("window.__pycalc.setEditorText('')")
+        press(browser, "Escape", "Escape", 27)
+        browser.eval("window.__pycalc.setEditorText('np.lin')")
         browser.eval("document.querySelector('.cm-content').focus()")
-        browser.call("Input.insertText", {"text": "np.lin"})
-        time.sleep(0.4)
+        press(browser, " ", "Space", 32, modifiers=2)
+        time.sleep(0.5)
         popup = browser.eval("document.querySelector('.cm-tooltip-autocomplete')?.textContent || ''")
         assert "linspace" in popup, popup
         assert browser.eval("document.querySelector('#type-hint')?.textContent") == "np : module numpy"
