@@ -46,7 +46,7 @@ class Browser:
         *,
         profile: Path | None = None,
         headless: bool = True,
-        port: int = 0,
+        port: int | None = None,
         timeout: float = 120.0,
         window_size: str = "1280,900",
     ) -> None:
@@ -54,9 +54,10 @@ class Browser:
         self.url = url
         self.timeout = timeout
         self._temp_profile = profile is None
-        self.profile = Path(profile) if profile else Path(tempfile.mkdtemp(prefix="pycalc-profile-"))
+        self.profile = Path(profile).resolve() if profile else Path(tempfile.mkdtemp(prefix="pycalc-profile-"))
         self.profile.mkdir(parents=True, exist_ok=True)
-        self.port = port or self._free_port()
+        # port=None -> pick a free port; port=0 -> ask Chrome (DevToolsActivePort)
+        self.port = self._free_port() if port is None else port
         self.window_size = window_size
         self.proc: subprocess.Popen | None = None
         self.ws: websocket.WebSocket | None = None
@@ -68,6 +69,18 @@ class Browser:
     def _free_port() -> int:
         import socket
 
+        # Avoid the Windows dynamic/ephemeral range: this machine has several
+        # excluded TCP port ranges above 50000, and Chrome then silently fails
+        # to bind its DevTools port.
+        for candidate in range(9400, 10000):
+            sock = socket.socket()
+            try:
+                sock.bind(("127.0.0.1", candidate))
+                return candidate
+            except OSError:
+                continue
+            finally:
+                sock.close()
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
@@ -81,7 +94,30 @@ class Browser:
     def __exit__(self, exc_type, exc, tb) -> None:
         self.close()
 
-    def start(self) -> None:
+    def _kill_proc(self) -> None:
+        if self.proc:
+            try:
+                self.proc.kill()
+                self.proc.wait(timeout=8)
+            except Exception:
+                pass
+            self.proc = None
+        if self.ws:
+            try:
+                self.ws.close()
+            except Exception:
+                pass
+            self.ws = None
+
+    def _attempt(self, port: int) -> None:
+        self.port = port
+        if port == 0:
+            # A stale DevToolsActivePort from a previous run would otherwise be
+            # read before the new Chrome instance rewrites it.
+            try:
+                (self.profile / "DevToolsActivePort").unlink()
+            except OSError:
+                pass
         args = [
             self.browser_path,
             "--headless=new",
@@ -90,7 +126,7 @@ class Browser:
             "--no-default-browser-check",
             "--disable-background-networking",
             "--remote-allow-origins=*",
-            f"--remote-debugging-port={self.port}",
+            f"--remote-debugging-port={port}",
             f"--user-data-dir={self.profile}",
             f"--window-size={self.window_size}",
             self.url,
@@ -107,9 +143,42 @@ class Browser:
         self.call("Log.enable")
         self.call("Network.enable")
 
+    def start(self) -> None:
+        candidates: list[int] = []
+        if self.port:
+            candidates.append(self.port)
+        candidates.append(0)
+        candidates.append(self._free_port())
+        last_error: Exception | None = None
+        for port in candidates:
+            try:
+                self._attempt(port)
+                return
+            except Exception as exc:  # noqa: BLE001 - retry with another port
+                last_error = exc
+                self._kill_proc()
+        raise RuntimeError(f"浏览器启动失败：{last_error}")
+
     def _wait_for_page(self) -> dict[str, Any]:
         deadline = time.time() + 30
         last_error: Exception | None = None
+        if self.port == 0:
+            active = self.profile / "DevToolsActivePort"
+            while time.time() < deadline:
+                try:
+                    lines = active.read_text(encoding="utf-8").splitlines()
+                    if lines and lines[0].strip().isdigit():
+                        self.port = int(lines[0].strip())
+                        break
+                except (OSError, ValueError):
+                    pass
+                if self.proc and self.proc.poll() is not None:
+                    raise RuntimeError(
+                        f"浏览器进程提前退出（code {self.proc.returncode}），无法启动 DevTools"
+                    )
+                time.sleep(0.05)
+            else:
+                raise RuntimeError("Chrome 未写出 DevToolsActivePort")
         while time.time() < deadline:
             try:
                 with urllib.request.urlopen(
