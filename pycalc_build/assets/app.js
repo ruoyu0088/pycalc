@@ -848,8 +848,14 @@ del _pycalc_glue_source
       label.classList.toggle('checked', input.checked);
       input.addEventListener('change', onLibraryChange);
       label.appendChild(input);
-      const text = lib.alias ? `${lib.label} (${lib.alias})` : lib.label;
-      label.appendChild(el('span', '', text));
+      // const text = lib.alias ? `${lib.label} (${lib.alias})` : lib.label;
+      // label.appendChild(el('span', '', text));
+      const text = lib.alias || lib.label;
+      const span = el('span', '', text);
+      if (lib.alias) {
+        span.title = lib.label;   // hint
+      }
+      label.appendChild(span);      
       host.appendChild(label);
     }
   }
