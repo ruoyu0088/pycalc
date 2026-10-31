@@ -173,12 +173,30 @@ button, select, textarea { font: inherit; }
 }
 
 .sidebar-resizer {
+  position: relative;
   cursor: col-resize;
   background: transparent;
   border-left: 1px solid transparent;
   border-right: 1px solid transparent;
   transition: background .12s ease;
   touch-action: none;
+}
+
+.sidebar-resizer::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 2px;
+  height: 32px;
+  border-radius: 2px;
+  background: var(--border);
+  transform: translateY(-50%);
+}
+
+.sidebar-resizer:hover::after,
+body.resizing-sidebar .sidebar-resizer::after {
+  background: var(--accent);
 }
 
 .sidebar-resizer:hover,
