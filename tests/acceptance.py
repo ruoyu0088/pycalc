@@ -134,12 +134,45 @@ def tap_keyboard_run(browser: Browser) -> None:
     browser.eval("window.__tapRun()")
 
 
+MOBILE_TAP_DRAWER_JS = """(name) => {
+  const element = document.querySelector(`.mk-key[data-drawer="${name}"]`);
+  if (!element) throw new Error(`no drawer key ${name}`);
+  for (const type of ['pointerdown', 'pointerup']) {
+    element.dispatchEvent(new PointerEvent(type, {
+      bubbles: true, pointerId: 1, pointerType: 'touch', isPrimary: true,
+    }));
+  }
+}"""
+
+
+def tap_keyboard_drawer(browser: Browser, name: str) -> None:
+    browser.eval(f"window.__tapDrawer = {MOBILE_TAP_DRAWER_JS}")
+    browser.eval(f"window.__tapDrawer({json.dumps(name)})")
+
+
 def touch_keyboard(browser: Browser, label: str) -> None:
     rect = browser.eval(
         "(() => {"
         f" const element = [...document.querySelectorAll('.mk-key,.mk-tab,.mk-lib-tab')]"
         f"   .find((item) => item.textContent === {json.dumps(label)});"
         " if (!element) throw new Error('no keyboard key');"
+        " const r = element.getBoundingClientRect();"
+        " return {x: r.x + r.width / 2, y: r.y + r.height / 2};"
+        "})()"
+    )
+    point = {
+        "x": rect["x"], "y": rect["y"],
+        "radiusX": 2, "radiusY": 2, "force": 1, "id": 1,
+    }
+    browser.call("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [point]})
+    browser.call("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+
+
+def touch_keyboard_drawer(browser: Browser, name: str) -> None:
+    rect = browser.eval(
+        "(() => {"
+        f" const element = document.querySelector('.mk-key[data-drawer={json.dumps(name)}]');"
+        " if (!element) throw new Error('no keyboard drawer key');"
         " const r = element.getBoundingClientRect();"
         " return {x: r.x + r.width / 2, y: r.y + r.height / 2};"
         "})()"
@@ -173,9 +206,9 @@ def test_mobile_keyboard() -> None:
         )
         assert browser.eval("!!document.querySelector('.mobile-keyboard')") is True
         assert browser.eval("document.body.classList.contains('mobile-keyboard-active')") is True
-        assert browser.eval("document.querySelectorAll('.mk-tab').length") == 4
+        assert browser.eval("document.querySelectorAll('.mk-tab').length") == 5
         assert browser.eval("[...document.querySelectorAll('.mk-tab')].map(x => x.textContent)") == [
-            "计算", "英文", "清空", "⌄",
+            "计算", "英文", "补全", "清空", "▼",
         ]
 
         assert browser.eval(
@@ -208,7 +241,7 @@ def test_mobile_keyboard() -> None:
         work_expanded = browser.eval(
             "document.querySelector('.workspace').getBoundingClientRect().height"
         )
-        tap_keyboard(browser, "⌄")
+        tap_keyboard(browser, "▼")
         time.sleep(0.2)
         assert browser.eval("getComputedStyle(document.querySelector('.mk-panel')).display") == "none"
         assert browser.eval(
@@ -242,7 +275,7 @@ def test_mobile_keyboard() -> None:
         assert browser.eval("window.__pycalc.getEditorValue()") == "for i in range(10):\n    "
 
         browser.eval("window.__pycalc.setEditorText('')")
-        tap_keyboard(browser, "库")
+        tap_keyboard_drawer(browser, "libraries")
         time.sleep(0.2)
         assert browser.eval("document.querySelectorAll('.mk-lib-tab').length") == 0
         assert "请先勾选扩展库" in browser.eval(
@@ -280,7 +313,7 @@ def test_mobile_keyboard() -> None:
         browser.eval("window.__pycalc.selectLibraries(['numpy', 'matplotlib.pyplot'])")
         time.sleep(0.2)
         browser.eval("window.__pycalc.setEditorText('')")
-        tap_keyboard(browser, "库")
+        tap_keyboard_drawer(browser, "libraries")
         time.sleep(0.2)
         assert browser.eval(
             "[...document.querySelectorAll('.mk-lib-tab')].map(x => x.textContent)"
@@ -303,7 +336,7 @@ def test_mobile_keyboard() -> None:
         assert browser.eval("!document.getElementById('mk-drawer').classList.contains('open')") is True
 
         browser.eval("window.__pycalc.setEditorText('np')")
-        tap_keyboard(browser, "库")
+        tap_keyboard_drawer(browser, "libraries")
         time.sleep(0.2)
         tap_keyboard(browser, "tolist")
         time.sleep(0.2)
@@ -315,14 +348,14 @@ def test_mobile_keyboard() -> None:
 
         # A real touch (not just a synthetic PointerEvent) must not be
         # swallowed by the backdrop's synthetic click after pointerup.
-        touch_keyboard(browser, "变量")
+        touch_keyboard_drawer(browser, "variables")
         time.sleep(0.35)
         assert browser.eval("document.getElementById('mk-drawer').classList.contains('open')") is True
         tap_keyboard(browser, "×")
         time.sleep(0.3)
 
         browser.eval("window.__pycalc.setEditorText('')")
-        tap_keyboard(browser, "数学")
+        tap_keyboard_drawer(browser, "math")
         time.sleep(0.2)
         assert browser.eval("document.querySelectorAll('.mk-drawer-item').length") == 27
         tap_keyboard(browser, "sin")
@@ -351,7 +384,7 @@ def test_mobile_keyboard() -> None:
         browser.eval("window.__pycalc.setLanguage('en')")
         time.sleep(0.2)
         assert browser.eval("[...document.querySelectorAll('.mk-tab')].map(x => x.textContent)") == [
-            "Calc", "English", "Clear", "⌄",
+            "Calc", "English", "Comp", "Clear", "▼",
         ]
         browser.eval("window.__pycalc.setLanguage('zh')")
         time.sleep(0.2)

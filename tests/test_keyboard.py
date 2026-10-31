@@ -32,11 +32,11 @@ class KeyboardLayoutTests(unittest.TestCase):
         calc = tabs["calc"]
         self.assertEqual(calc["type"], "split")
         self.assertEqual(len(calc["left"]["items"]), 5)
-        self.assertEqual(calc["right"]["columns"], 6)
+        self.assertEqual(calc["right"]["columns"], 7)
         self.assertEqual(len(calc["right"]["rows"]), 5)
         for row in calc["right"]["rows"]:
             total = sum(int(item.get("span", 1)) for item in row)
-            self.assertEqual(total, 6)
+            self.assertEqual(total, 7)
         self.assertTrue(any(item.get("action") == "run" for item in calc["right"]["rows"][-1]))
 
     def test_en_views(self):

@@ -202,6 +202,7 @@ https://ruoyu0088.github.io/pycalc/
 - 属性补全优先使用实时命名空间；尚未运行的赋值会对常见 numpy/sympy/matplotlib 构造器和类型注解做静态推断，其他复杂表达式仍建议先运行再补全。
 - **运行键可选**：`Ctrl/Cmd+Enter` 或 `Enter`。选择 `Enter` 时，只有 Python 认为代码“完整”才运行（`def`/`if`/括号未闭合、语法错误等都保持换行）；`Shift+Enter` 始终换行；输入法组合输入时不会误触发。
 - **触摸设备精简**：`pointer: coarse` 且虚拟键盘成功创建后，隐藏运行键选择、运行按钮和底部提示栏；运行入口移到键盘的 `=` 键。桌面模式完全不变。
+- **启动顺序**：编辑器和历史先显示，顶栏临时显示 `加载 Python… / 安装扩展库… / 初始化… / 恢复会话…`；runtime 就绪前运行、会话切换和扩展库勾选禁用。Matplotlib 只在勾选 `plt` 或代码真正 `import` 时加载，普通计算不会再触发 `matplotlib.pyplot`。
 - **明暗主题**：CSS、CodeMirror 语法高亮、Matplotlib 默认样式一起切换。首次跟随系统 `prefers-color-scheme`，之后记住选择。Matplotlib 只影响切换主题之后生成的图，历史 PNG 不重绘。
 - **扩展库 checkbox**：输入框上方列出**构建时库定义**里的每个别名，例如 `numpy (np)`、`matplotlib.pyplot (plt)`、`sympy (sp)`、`pandas (pd)`。勾选后自动导入，无需写 `import`。新会话默认只加载 Math，扩展库需要勾选；选择状态保存在会话里，切换会话时恢复。
 - **Math 始终加载**：`sin, cos, tan, sqrt, exp, log, log10, factorial, pi, e, inf, nan` 等名字可直接使用，像普通计算器一样；Math 不出现在扩展库列表中，也不会写入变量表。

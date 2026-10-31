@@ -133,35 +133,15 @@ def _pycalc_detect_engine():
 
 
 def _pycalc_self_test():
-    engine = _pycalc_detect_engine()
-    info = {
-        "engine": engine,
-        "python": sys.version.split()[0],
-        "numpy": False,
-    }
-    try:
-        import numpy as np
-
-        array = np.arange(6).reshape(2, 3)
-        if engine == "cloudpickle":
-            import cloudpickle
-
-            blob = cloudpickle.dumps({"array": array, "fn": lambda x: x * 2})
-            restored = cloudpickle.loads(blob)
-            info["numpy"] = bool(
-                restored["array"].shape == (2, 3) and restored["fn"](21) == 42
-            )
-        else:
-            info["numpy"] = bool(int(array.sum()) == 15)
-    except Exception as exc:
-        info["numpy_error"] = f"{type(exc).__name__}: {exc}"
-    try:
-        import matplotlib
-
-        info["matplotlib"] = str(matplotlib.__version__)
-    except Exception:
-        pass
-    return json.dumps(info, ensure_ascii=False)
+    # Keep startup checks cheap: importing numpy/matplotlib here would defeat
+    # the lazy-import path before the user has selected a library.
+    return json.dumps(
+        {
+            "engine": _pycalc_detect_engine(),
+            "python": sys.version.split()[0],
+        },
+        ensure_ascii=False,
+    )
 
 
 def _pycalc_bind(name, value, conflicts):
@@ -280,6 +260,11 @@ def _pycalc_is_complete(code):
 
 
 def _pycalc_set_plot_theme(theme):
+    if "matplotlib" not in sys.modules:
+        # Keep startup free of an unconditional matplotlib import.  The theme
+        # is applied after the user selects a matplotlib library, or after a
+        # snapshot restores a Figure (which imports matplotlib itself).
+        return json.dumps({"ok": True, "skipped": True})
     try:
         import matplotlib
 
@@ -424,12 +409,15 @@ def _pycalc_restore_from_file(path):
 
 
 def _pycalc_reset():
-    try:
-        import matplotlib.pyplot as plt
+    # Do not import pyplot just to clear figures.  If it was never loaded,
+    # there are no pyplot-managed figures to close.
+    if "matplotlib.pyplot" in sys.modules:
+        try:
+            import matplotlib.pyplot as plt
 
-        plt.close("all")
-    except Exception:
-        pass
+            plt.close("all")
+        except Exception:
+            pass
     globals_dict = _pycalc_user_globals()
     for name in list(globals_dict):
         if name in _PYCALC_PROTECTED or name.startswith("__"):
@@ -838,6 +826,10 @@ def _pycalc_run(code):
 
 
 def _pycalc_figures():
+    # This runs after every cell.  Importing pyplot here made a plain 1+1 pay
+    # the matplotlib import cost even when the user never selected plt.
+    if "matplotlib.pyplot" not in sys.modules:
+        return "[]"
     try:
         import matplotlib.pyplot as plt
     except Exception:
@@ -872,16 +864,11 @@ def _pycalc_namespace_info():
     )
 
 
-# Set the backend before user code imports pyplot.
+# Set the backend before user code imports pyplot.  Do not import matplotlib
+# here: this glue is executed during startup and would defeat lazy loading.
 os.environ.setdefault("MPLBACKEND", "Agg")
 try:
     warnings.filterwarnings("ignore", message=".*FigureCanvasAgg is non-interactive.*")
     warnings.filterwarnings("ignore", message=".*missing from font.*")
-except Exception:
-    pass
-try:
-    import matplotlib
-
-    matplotlib.use("Agg", force=True)
 except Exception:
     pass

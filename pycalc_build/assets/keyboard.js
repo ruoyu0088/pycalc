@@ -285,6 +285,7 @@
     button.setAttribute('tabindex', '-1');
     button.className = 'mk-key';
     button.dataset.action = key.action || 'insert';
+    if (key.drawer) button.dataset.drawer = key.drawer;
     if (key.style === 'run') button.classList.add('run');
     if (key.wide) button.classList.add('wide');
     if (key.span && Number(key.span) > 1) button.style.gridColumn = `span ${Number(key.span)}`;

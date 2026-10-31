@@ -222,6 +222,7 @@
     suppressEditorSave: false,
     ui: { ...DEFAULT_UI },
     status: null,
+    runtimeStatus: null,
     overlay: null,
     mobileSidebarOpen: false,
   };
@@ -288,14 +289,23 @@
     renderStatus();
   }
 
+  function setRuntimeStatus(key, params) {
+    state.runtimeStatus = key ? { key, params: params || {} } : null;
+    renderStatus();
+  }
+
   function renderStatus() {
-    $('save-status').textContent = '';
-    return;
-    if (!state.status) {
-      $('save-status').textContent = '';
+    const node = $('save-status');
+    if (!node) return;
+    if (!state.runtimeStatus) {
+      // The normal save indicator is intentionally hidden to save titlebar
+      // space; only startup/restore progress uses this slot.
+      node.textContent = '';
+      node.classList.remove('runtime-loading');
       return;
     }
-    $('save-status').textContent = I18n.t(state.status.key, state.status.params);
+    node.textContent = I18n.t(state.runtimeStatus.key, state.runtimeStatus.params);
+    node.classList.add('runtime-loading');
   }
 
   function setEngine(engine) {
@@ -455,6 +465,7 @@
 
   async function loadRuntime() {
     setStage('overlay.runtime', { version: CFG.pyodideVersion, python: CFG.pythonVersion });
+    setRuntimeStatus('runtime.loading');
     await new Promise((resolve) => setTimeout(resolve, 0));
     perf.mark('runtime:yield'); 
 
@@ -474,6 +485,7 @@
     }
 
     setStage('overlay.packages', { libs: (CFG.libs || []).join(', ') || 'cloudpickle' });
+    setRuntimeStatus('runtime.packages');
     perf.mark('runtime:packagesStage');
     const options = {
       indexURL: 'https://pycalc.local/',
@@ -498,6 +510,7 @@
     perf.mark('runtime:setStreams');
 
     setStage('overlay.init');
+    setRuntimeStatus('runtime.init');
     pyodide.globals.set('_pycalc_glue_source', PY_GLUE_SOURCE);
     pyodide.runPython(`
 import types as _pycalc_types
@@ -1191,6 +1204,7 @@ del _pycalc_glue_source
   async function applyNamespaceForActiveSession() {
     if (!py) return;
     setStage('overlay.restore');
+    setRuntimeStatus('runtime.restore');
     window.__pycalcBootStage = 'restore:start';
     await new Promise((resolve) => setTimeout(resolve, 0));
     perf.mark('restore:yield');
@@ -1254,6 +1268,7 @@ del _pycalc_glue_source
       try { py.setPlotTheme(state.ui.theme); } catch (err) { console.warn('plot theme failed', err); }
     }
     perf.mark('restore:inspector');
+    setRuntimeStatus(null);
     window.__pycalcBootStage = 'restore:done';
   }
 
@@ -1808,17 +1823,17 @@ del _pycalc_glue_source
 
   function updateBusyUi() {
     $('run').disabled = state.busy || !state.ready;
-    $('session-select').disabled = state.busy;
-    $('session-new').disabled = state.busy;
-    $('session-rename').disabled = state.busy;
-    $('session-clear').disabled = state.busy;
-    $('session-delete').disabled = state.busy;
+    $('session-select').disabled = state.busy || !state.ready;
+    $('session-new').disabled = state.busy || !state.ready;
+    $('session-rename').disabled = state.busy || !state.ready;
+    $('session-clear').disabled = state.busy || !state.ready;
+    $('session-delete').disabled = state.busy || !state.ready;
     $('language-select').disabled = state.busy;
     $('run-key').disabled = state.busy;
     $('theme-toggle').disabled = state.busy;
     $('sympy-output-toggle').disabled = state.busy;
     for (const input of $('library-list').querySelectorAll('input')) {
-      input.disabled = state.busy;
+      input.disabled = state.busy || !state.ready;
     }
     $('run').textContent = state.running
       ? I18n.t('run.running')
@@ -2212,12 +2227,20 @@ del _pycalc_glue_source
     await restoreActiveSession();
     perf.mark('boot:restoreActiveSession');
 
-    setOverlay('overlay.startTitle', 'overlay.runtime', {
-      version: CFG.pyodideVersion, python: CFG.pythonVersion,
-    });
+    // The editor, history and session shell are usable already.  Reveal them
+    // before the (still main-thread) Python startup, and show progress in the
+    // status slot instead of keeping a full-screen blocker.
+    hideOverlay();
+    setRuntimeStatus('runtime.loading');
+    initMobileKeyboardUi();
+    updateBusyUi();
+    perf.mark('boot:uiReady');
+    await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+
     try {
       await loadRuntime();
     } catch (err) {
+      setRuntimeStatus(null);
       console.error(err);
       setOverlay(
         'overlay.runtimeTitle',

@@ -166,6 +166,7 @@ button, select, textarea { font: inherit; }
 .badge.bad { background: var(--red-soft); color: var(--red); border-color: var(--red); }
 
 .save-status { color: var(--muted); font-size: 11.5px; min-width: 72px; text-align: right; }
+.save-status.runtime-loading { color: var(--amber); }
 
 /* ---------- workspace ---------- */
 
