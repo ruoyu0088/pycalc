@@ -31,7 +31,7 @@ class KeyboardLayoutTests(unittest.TestCase):
         self.assertEqual(list(tabs), ["calc", "en"])
         calc = tabs["calc"]
         self.assertEqual(calc["type"], "split")
-        self.assertEqual(len(calc["left"]["items"]), 4)
+        self.assertEqual(len(calc["left"]["items"]), 5)
         self.assertEqual(calc["right"]["columns"], 5)
         self.assertEqual(len(calc["right"]["rows"]), 5)
         for row in calc["right"]["rows"]:
@@ -57,7 +57,7 @@ class KeyboardLayoutTests(unittest.TestCase):
 
     def test_drawers_and_math(self):
         drawers = LAYOUT["drawers"]
-        self.assertEqual(set(drawers), {"variables", "functions", "libraries", "math"})
+        self.assertEqual(set(drawers), {"variables", "functions", "libraries", "math", "python"})
         self.assertTrue(drawers["libraries"]["tabs"])
         self.assertEqual(drawers["functions"]["suffix"], "(")
         math = drawers["math"]["items"]
