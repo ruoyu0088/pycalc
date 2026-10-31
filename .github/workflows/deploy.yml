@@ -16,7 +16,7 @@ concurrency:
 
 env:
   PYCALC_VERSION: "314.0.7"
-  PYCALC_LIBS: "numpy sympy matplotlib"
+  PYCALC_LIBS: "numpy sympy matplotlib pandas polars"
 
 jobs:
   build:
@@ -48,6 +48,11 @@ jobs:
           mkdir -p _site
           python build.py \
             --libs $PYCALC_LIBS \
+            --alias np=numpy \
+            --alias plt=matplotlib.pyplot \
+            --alias sp=sympy \
+            --alias pd=pandas \
+            --alias pl=polars \
             --pyodide-version "$PYCALC_VERSION" \
             --lang en \
             --output _site/index.html
