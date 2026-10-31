@@ -434,6 +434,20 @@ del _pycalc_glue_source
       throw new Error(
         `数据库 ${CFG.dbName} 属于其他程序（appId 不匹配），为避免混用已停止。`
       );
+    } else {
+      const storedSchema = Number(appMeta.schemaVersion || 1);
+      if (storedSchema > CFG.schemaVersion) {
+        throw new Error(
+          `会话数据库由更新版本的 PyCalc 创建（schema ${storedSchema} > ${CFG.schemaVersion}），请使用新版 HTML。`
+        );
+      }
+      if (storedSchema < CFG.schemaVersion) {
+        // Future migrations can run here.  For now only the version marker
+        // changes, so v1 data remains fully readable.
+        appMeta.schemaVersion = CFG.schemaVersion;
+        appMeta.updatedAt = Date.now();
+        await putMeta(db, appMeta);
+      }
     }
     return new IdbStorage(db);
   }
@@ -454,6 +468,8 @@ del _pycalc_glue_source
     namespaceMeta: null,
     engine: 'unknown',
     busy: false,
+    running: false,
+    suppressEditorSave: false,
     ready: false,
     saveChain: Promise.resolve(),
     saveTimer: null,
@@ -644,12 +660,13 @@ del _pycalc_glue_source
         value: initial,
         onChange: (value) => {
           state.draft = value;
-          scheduleSave({ snapshot: false, delay: 900 });
+          if (!state.suppressEditorSave) scheduleSave({ snapshot: false, delay: 900 });
         },
       });
       return {
         getValue: () => cm.getValue(),
         setValue: (value) => cm.setValue(value || ''),
+        reset: (value) => cm.reset(value || ''),
         focus: () => cm.focus(),
         isCodeMirror: true,
       };
@@ -657,7 +674,7 @@ del _pycalc_glue_source
 
     const onInput = () => {
       state.draft = textarea.value;
-      scheduleSave({ snapshot: false, delay: 900 });
+      if (!state.suppressEditorSave) scheduleSave({ snapshot: false, delay: 900 });
     };
     textarea.addEventListener('input', onInput);
     textarea.addEventListener('keydown', (event) => {
@@ -701,6 +718,7 @@ del _pycalc_glue_source
       createdAt: current ? current.createdAt : Date.now(),
       updatedAt: Date.now(),
       executionCount: state.executionCount,
+      schemaVersion: CFG.schemaVersion,
       ...overrides,
     };
   }
@@ -708,6 +726,7 @@ del _pycalc_glue_source
   function buildData() {
     return {
       id: state.activeId,
+      schemaVersion: CFG.schemaVersion,
       history: state.history,
       draft: state.draft,
       namespace: state.namespace,
@@ -844,8 +863,16 @@ del _pycalc_glue_source
       createdAt: now,
       updatedAt: now,
       executionCount: 0,
+      schemaVersion: CFG.schemaVersion,
     };
-    const data = { id, history: [], draft: '', namespace: null, namespaceMeta: null };
+    const data = {
+      id,
+      schemaVersion: CFG.schemaVersion,
+      history: [],
+      draft: '',
+      namespace: null,
+      namespaceMeta: null,
+    };
     await state.storage.putSession(index, data);
     state.sessions.push(index);
     return index;
@@ -865,16 +892,29 @@ del _pycalc_glue_source
     if (!active) await state.storage.putMeta({ key: 'active', value: created.id });
   }
 
+  function migrateSessionData(data) {
+    if (!data.schemaVersion) data.schemaVersion = 1;
+    if (Number(data.schemaVersion) > CFG.schemaVersion) {
+      throw new Error(
+        `会话「${data.id}」由更新版本创建（schema ${data.schemaVersion} > ${CFG.schemaVersion}）`
+      );
+    }
+    // Placeholder for future migrations.  Keep this function as the single
+    // place where session record shapes are upgraded.
+    return data;
+  }
+
   async function loadSessionIntoState(id) {
     const index = state.sessions.find((s) => s.id === id);
     if (!index) throw new Error('会话不存在');
-    const data = (await state.storage.getSession(id)) || {
+    const data = migrateSessionData((await state.storage.getSession(id)) || {
       id,
+      schemaVersion: CFG.schemaVersion,
       history: [],
       draft: '',
       namespace: null,
       namespaceMeta: null,
-    };
+    });
     state.activeId = id;
     state.activeName = index.name;
     state.history = Array.isArray(data.history) ? data.history : [];
@@ -883,14 +923,37 @@ del _pycalc_glue_source
     state.namespace = data.namespace || null;
     state.namespaceMeta = data.namespaceMeta || null;
     setHistory(state.history);
-    if (editor) editor.setValue(state.draft);
+    setEditorValue(state.draft);
     updateHeader();
+  }
+
+  function setEditorValue(value) {
+    if (!editor) return;
+    state.suppressEditorSave = true;
+    try {
+      if (typeof editor.reset === 'function') editor.reset(value || '');
+      else editor.setValue(value || '');
+      state.draft = value || '';
+    } finally {
+      state.suppressEditorSave = false;
+    }
   }
 
   async function applyNamespaceForActiveSession() {
     if (!py) return;
     setStage('恢复会话变量…');
     await new Promise((resolve) => requestAnimationFrame(resolve));
+    const nsMeta = state.namespaceMeta;
+    if (
+      nsMeta && state.namespace &&
+      (nsMeta.pythonVersion && nsMeta.pythonVersion !== CFG.pythonVersion ||
+       nsMeta.pyodideVersion && nsMeta.pyodideVersion !== CFG.pyodideVersion)
+    ) {
+      banner(
+        `变量快照来自 Pyodide ${nsMeta.pyodideVersion || '?'} / Python ${nsMeta.pythonVersion || '?'}，` +
+        `当前为 ${CFG.pyodideVersion} / Python ${CFG.pythonVersion}；历史不受影响，变量恢复将尽力而为。`
+      );
+    }
     try {
       py.reset();
       const codes = state.history.map((entry) => entry.code).filter(Boolean);
@@ -931,6 +994,7 @@ del _pycalc_glue_source
       if (!options.silent) toast(`已切换到「${state.activeName}」`);
     } catch (err) {
       console.warn(err);
+      renderSessionSelect();
       banner(`切换会话失败：${err.message || err}`, 'bad', true);
     } finally {
       state.busy = false;
@@ -974,30 +1038,37 @@ del _pycalc_glue_source
     await createSessionByName(raw);
   }
 
+  async function renameSessionTo(name) {
+    if (state.busy || !state.activeId) return false;
+    const trimmed = String(name || '').trim();
+    if (!trimmed) {
+      toast('会话名称不能为空');
+      return false;
+    }
+    if (state.sessions.some((s) => s.name === trimmed && s.id !== state.activeId)) {
+      toast('已存在同名会话');
+      return false;
+    }
+    try {
+      state.activeName = trimmed;
+      const index = buildIndex({ name: trimmed });
+      const current = state.sessions.find((s) => s.id === state.activeId);
+      if (current) current.name = trimmed;
+      await state.storage.putSession(index, buildData());
+      updateHeader();
+      toast('已重命名');
+      return true;
+    } catch (err) {
+      banner(`重命名失败：${err.message || err}`, 'bad');
+      return false;
+    }
+  }
+
   async function renameSession() {
     if (state.busy || !state.activeId) return;
     const raw = window.prompt('重命名会话', state.activeName);
     if (raw === null) return;
-    const name = raw.trim();
-    if (!name) {
-      toast('会话名称不能为空');
-      return;
-    }
-    if (state.sessions.some((s) => s.name === name && s.id !== state.activeId)) {
-      toast('已存在同名会话');
-      return;
-    }
-    try {
-      state.activeName = name;
-      const index = buildIndex({ name });
-      const current = state.sessions.find((s) => s.id === state.activeId);
-      if (current) current.name = name;
-      await state.storage.putSession(index, buildData());
-      updateHeader();
-      toast('已重命名');
-    } catch (err) {
-      banner(`重命名失败：${err.message || err}`, 'bad');
-    }
+    await renameSessionTo(raw);
   }
 
   async function deleteSession() {
@@ -1072,7 +1143,7 @@ del _pycalc_glue_source
     $('session-new').disabled = state.busy;
     $('session-rename').disabled = state.busy;
     $('session-delete').disabled = state.busy;
-    $('run').textContent = state.busy ? '运行中…' : '运行';
+    $('run').textContent = state.running ? '运行中…' : state.busy ? '处理中…' : '运行';
   }
 
   // ---------------------------------------------------------------------
@@ -1085,6 +1156,7 @@ del _pycalc_glue_source
     if (!code.trim()) return;
 
     state.busy = true;
+    state.running = true;
     updateBusyUi();
     const n = state.executionCount + 1;
     state.executionCount = n;
@@ -1131,6 +1203,7 @@ del _pycalc_glue_source
       setActiveOutput(null);
       live.finish(entry);
       state.busy = false;
+      state.running = false;
       updateBusyUi();
       scheduleSave({ snapshot: true, delay: 250 });
       if (editor) editor.focus();
@@ -1271,6 +1344,7 @@ del _pycalc_glue_source
       return runCode();
     },
     createSession: createSessionByName,
+    renameSession: renameSessionTo,
     switchSession: async (id) => {
       await switchSession(id);
       return state.activeId;

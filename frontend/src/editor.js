@@ -66,43 +66,43 @@ const pycalcTheme = EditorView.theme(
  */
 export function create(parent, options = {}) {
   const onChange = options.onChange || (() => {});
-  const state = EditorState.create({
-    doc: options.value || '',
-    extensions: [
-      lineNumbers(),
-      history(),
-      drawSelection(),
-      highlightActiveLine(),
-      indentOnInput(),
-      bracketMatching(),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-      indentUnit.of('    '),
-      EditorState.tabSize.of(4),
-      python(),
-      placeholder('输入 Python 代码，Ctrl+Enter 运行…'),
-      EditorView.lineWrapping,
-      pycalcTheme,
-      keymap.of([
-        ...defaultKeymap,
-        ...historyKeymap,
-        indentWithTab,
-        {
-          key: 'Mod-Enter',
-          run: () => {
-            if (typeof window.__pycalcRun === 'function') {
-              window.__pycalcRun();
-            }
-            return true;
-          },
+  const extensions = [
+    lineNumbers(),
+    history(),
+    drawSelection(),
+    highlightActiveLine(),
+    indentOnInput(),
+    bracketMatching(),
+    syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+    indentUnit.of('    '),
+    EditorState.tabSize.of(4),
+    python(),
+    placeholder('输入 Python 代码，Ctrl+Enter 运行…'),
+    EditorView.lineWrapping,
+    pycalcTheme,
+    keymap.of([
+      ...defaultKeymap,
+      ...historyKeymap,
+      indentWithTab,
+      {
+        key: 'Mod-Enter',
+        run: () => {
+          if (typeof window.__pycalcRun === 'function') {
+            window.__pycalcRun();
+          }
+          return true;
         },
-      ]),
-      EditorView.updateListener.of((update) => {
-        if (update.docChanged) onChange(update.state.doc.toString());
-      }),
-    ],
-  });
+      },
+    ]),
+    EditorView.updateListener.of((update) => {
+      if (update.docChanged) onChange(update.state.doc.toString());
+    }),
+  ];
 
-  const view = new EditorView({ state, parent });
+  const makeState = (value) =>
+    EditorState.create({ doc: value == null ? '' : String(value), extensions });
+
+  const view = new EditorView({ state: makeState(options.value || ''), parent });
 
   return {
     view,
@@ -112,6 +112,11 @@ export function create(parent, options = {}) {
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: text },
       });
+    },
+    // Used when switching sessions: start a fresh state so undo/redo from the
+    // previous session cannot leak into the new one.
+    reset: (value) => {
+      view.setState(makeState(value || ''));
     },
     focus: () => view.focus(),
     destroy: () => view.destroy(),
