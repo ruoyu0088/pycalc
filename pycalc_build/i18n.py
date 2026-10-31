@@ -64,12 +64,12 @@ EN: dict[str, str] = {
     "console.emptyTitle": "Start calculating",
     "console.emptyBody": "Type Python below and press {key} to run.",
     "console.emptyBody2": "Math functions such as sin, cos and sqrt are always available.",
-    "console.inputPromptTitle": "Copy this input to the clipboard",
-    "console.outputPromptTitle": "Copy this output to the clipboard",
-    "console.copiedInput": "Input copied.",
-    "console.copiedOutput": "Output copied.",
-    "console.copyFailed": "Could not copy to the clipboard.",
-    "console.noText": "This output has no text to copy.",
+    "console.inputPromptTitle": "Insert this input at the cursor",
+    "console.outputPromptTitle": "Insert this output at the cursor",
+    "console.copiedInput": "Input inserted.",
+    "console.copiedOutput": "Output inserted.",
+    "console.copyFailed": "Could not insert this text.",
+    "console.noText": "This output has no text to insert.",
     # Libraries / run key / editor
     "libraries.label": "Libraries",
     "libraries.hint": "Checked libraries are imported automatically; no import needed.",
@@ -207,6 +207,7 @@ EN: dict[str, str] = {
     "keyboard.key.enter": "Enter",
     "keyboard.key.undo": "Undo",
     "keyboard.key.clear": "Clear",
+    "keyboard.key.clearInput": "Clear",
 }
 
 ZH: dict[str, str] = {
@@ -255,12 +256,12 @@ ZH: dict[str, str] = {
     "console.emptyTitle": "开始计算",
     "console.emptyBody": "在下方输入 Python，按 {key} 运行。",
     "console.emptyBody2": "sin、cos、sqrt 等 Math 函数始终可用。",
-    "console.inputPromptTitle": "复制这条输入到剪贴板",
-    "console.outputPromptTitle": "复制这条输出到剪贴板",
-    "console.copiedInput": "输入已复制。",
-    "console.copiedOutput": "输出已复制。",
-    "console.copyFailed": "复制到剪贴板失败。",
-    "console.noText": "这条输出没有可复制的文本。",
+    "console.inputPromptTitle": "把这条输入插入到光标位置",
+    "console.outputPromptTitle": "把这条输出插入到光标位置",
+    "console.copiedInput": "输入已插入。",
+    "console.copiedOutput": "输出已插入。",
+    "console.copyFailed": "插入文本失败。",
+    "console.noText": "这条输出没有可插入的文本。",
     "libraries.label": "扩展库",
     "libraries.hint": "勾选后自动导入，无需再写 import。",
     "sympyOutput.label": "SymPy 输出",
@@ -392,6 +393,7 @@ ZH: dict[str, str] = {
     "keyboard.key.enter": "回车",
     "keyboard.key.undo": "撤销",
     "keyboard.key.clear": "清除",
+    "keyboard.key.clearInput": "清空",
 }
 
 JA: dict[str, str] = {
@@ -440,12 +442,12 @@ JA: dict[str, str] = {
     "console.emptyTitle": "計算を始めましょう",
     "console.emptyBody": "下に Python を入力し、{key} で実行します。",
     "console.emptyBody2": "sin、cos、sqrt などの Math 関数はいつでも使えます。",
-    "console.inputPromptTitle": "この入力をクリップボードにコピー",
-    "console.outputPromptTitle": "この出力をクリップボードにコピー",
-    "console.copiedInput": "入力をコピーしました。",
-    "console.copiedOutput": "出力をコピーしました。",
-    "console.copyFailed": "クリップボードにコピーできませんでした。",
-    "console.noText": "この出力にはコピーできるテキストがありません。",
+    "console.inputPromptTitle": "この入力をカーソル位置に挿入",
+    "console.outputPromptTitle": "この出力をカーソル位置に挿入",
+    "console.copiedInput": "入力を挿入しました。",
+    "console.copiedOutput": "出力を挿入しました。",
+    "console.copyFailed": "テキストを挿入できませんでした。",
+    "console.noText": "この出力には挿入できるテキストがありません。",
     "libraries.label": "ライブラリ",
     "libraries.hint": "チェックしたライブラリは自動でインポートされ、import は不要です。",
     "sympyOutput.label": "SymPy 出力",
@@ -577,6 +579,7 @@ JA: dict[str, str] = {
     "keyboard.key.enter": "入力",
     "keyboard.key.undo": "元に戻す",
     "keyboard.key.clear": "クリア",
+    "keyboard.key.clearInput": "クリア",
 }
 
 MESSAGES: dict[str, dict[str, str]] = {"en": EN, "zh": ZH, "ja": JA}

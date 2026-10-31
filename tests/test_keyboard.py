@@ -32,13 +32,12 @@ class KeyboardLayoutTests(unittest.TestCase):
         calc = tabs["calc"]
         self.assertEqual(calc["type"], "split")
         self.assertEqual(len(calc["left"]["items"]), 5)
-        self.assertEqual(calc["right"]["columns"], 5)
+        self.assertEqual(calc["right"]["columns"], 6)
         self.assertEqual(len(calc["right"]["rows"]), 5)
         for row in calc["right"]["rows"]:
             total = sum(int(item.get("span", 1)) for item in row)
-            self.assertEqual(total, 5)
-        self.assertEqual(calc["right"]["rows"][-1][0]["label"], "0")
-        self.assertEqual(calc["right"]["rows"][-1][1]["action"], "run")
+            self.assertEqual(total, 6)
+        self.assertTrue(any(item.get("action") == "run" for item in calc["right"]["rows"][-1]))
 
     def test_en_views(self):
         en = next(tab for tab in LAYOUT["tabs"] if tab["id"] == "en")
@@ -61,8 +60,8 @@ class KeyboardLayoutTests(unittest.TestCase):
         self.assertTrue(drawers["libraries"]["tabs"])
         self.assertEqual(drawers["functions"]["suffix"], "(")
         math = drawers["math"]["items"]
-        self.assertEqual(len(math), 26)
-        self.assertEqual(len({item["label"] for item in math}), 26)
+        self.assertEqual(len(math), 27)
+        self.assertEqual(len({item["label"] for item in math}), 27)
         self.assertTrue(any(item["label"] == "sin" and item["insert"] == "sin(" for item in math))
         self.assertTrue(any(item["label"] == "pi" and item["insert"] == "pi" for item in math))
 

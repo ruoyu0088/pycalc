@@ -485,6 +485,35 @@ def _pycalc_safe_repr(value):
     return text
 
 
+def _pycalc_dataframe_summary(value):
+    """Return a compact shape/columns summary for pandas/polars DataFrames."""
+    cls = type(value)
+    module = str(getattr(cls, "__module__", ""))
+    name = str(getattr(cls, "__qualname__", ""))
+    if name != "DataFrame" or not (
+        module == "pandas"
+        or module.startswith("pandas.")
+        or module == "polars"
+        or module.startswith("polars.")
+    ):
+        return None
+    try:
+        shape = tuple(int(part) for part in value.shape)
+        columns = list(value.columns)
+    except Exception:
+        return None
+
+    names = []
+    for column in columns[:8]:
+        text = str(column)
+        if len(text) > 32:
+            text = text[:29] + "..."
+        names.append(repr(text))
+    if len(columns) > 8:
+        names.append(f"... +{len(columns) - 8}")
+    return f"shape={shape}, columns=[{', '.join(names)}]"
+
+
 def _pycalc_list_vars():
     rows = []
     for name, value in list(_pycalc_user_globals().items()):
@@ -498,7 +527,7 @@ def _pycalc_list_vars():
             {
                 "name": name,
                 "type": _pycalc_type_name(value),
-                "value": _pycalc_safe_repr(value),
+                "value": _pycalc_dataframe_summary(value) or _pycalc_safe_repr(value),
             }
         )
     rows.sort(key=lambda row: row["name"].lower())

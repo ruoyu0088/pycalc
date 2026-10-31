@@ -1424,55 +1424,25 @@ del _pycalc_glue_source
     button.dataset.n = String(n);
     button.textContent = `[${n}]`;
     button.title = I18n.t(kind === 'in' ? 'console.inputPromptTitle' : 'console.outputPromptTitle');
-    button.addEventListener('click', () => copyEntryText(entry, kind));
+    button.addEventListener('click', () => insertEntryText(entry, kind));
     return button;
   }
 
-  function legacyCopyText(text) {
-    const area = document.createElement('textarea');
-    area.value = text;
-    area.setAttribute('readonly', '');
-    area.setAttribute('inputmode', 'none');
-    area.setAttribute('aria-hidden', 'true');
-    area.style.position = 'fixed';
-    area.style.left = '-9999px';
-    area.style.top = '0';
-    document.body.appendChild(area);
-    area.select();
-    let ok = false;
-    try {
-      ok = document.execCommand('copy');
-    } catch (_) {
-      ok = false;
-    }
-    area.remove();
-    return ok;
-  }
-
-  async function copyTextToClipboard(text) {
-    if (navigator.clipboard && window.isSecureContext) {
-      try {
-        await navigator.clipboard.writeText(text);
-        return true;
-      } catch (_) {
-        // Fall through to the legacy path (for example file:// or denied
-        // clipboard permission).
-      }
-    }
-    return legacyCopyText(text);
-  }
-
-  async function copyEntryText(entry, kind) {
+  function insertEntryText(entry, kind) {
     const text = kind === 'in' ? entry.code : outputText(entry);
     if (!text) {
       toast('console.noText');
-      return false;
+      return;
     }
-    const ok = await copyTextToClipboard(text);
-    toast(ok
-      ? (kind === 'in' ? 'console.copiedInput' : 'console.copiedOutput')
-      : 'console.copyFailed');
-    return ok;
+    try {
+      // Insert at the current selection; never clear the whole editor.
+      editor.insertAtCursor(text);
+      editor.focus();
+      state.historyNav.index = null;
+      toast(kind === 'in' ? 'console.copiedInput' : 'console.copiedOutput');
+    } catch (err) {
+      banner('banner.copyFailed', { error: err.message || err }, 'bad');
+    }
   }
 
   function mathResult(mathml) {

@@ -118,6 +118,22 @@ def tap_keyboard(browser: Browser, label: str) -> None:
     browser.eval(f"window.__tap({json.dumps(label)})")
 
 
+MOBILE_TAP_RUN_JS = """() => {
+  const element = document.querySelector('.mk-key.run');
+  if (!element) throw new Error('no run key');
+  for (const type of ['pointerdown', 'pointerup']) {
+    element.dispatchEvent(new PointerEvent(type, {
+      bubbles: true, pointerId: 1, pointerType: 'touch', isPrimary: true,
+    }));
+  }
+}"""
+
+
+def tap_keyboard_run(browser: Browser) -> None:
+    browser.eval(f"window.__tapRun = {MOBILE_TAP_RUN_JS}")
+    browser.eval("window.__tapRun()")
+
+
 def touch_keyboard(browser: Browser, label: str) -> None:
     rect = browser.eval(
         "(() => {"
@@ -157,9 +173,9 @@ def test_mobile_keyboard() -> None:
         )
         assert browser.eval("!!document.querySelector('.mobile-keyboard')") is True
         assert browser.eval("document.body.classList.contains('mobile-keyboard-active')") is True
-        assert browser.eval("document.querySelectorAll('.mk-tab').length") == 2
+        assert browser.eval("document.querySelectorAll('.mk-tab').length") == 3
         assert browser.eval("[...document.querySelectorAll('.mk-tab')].map(x => x.textContent)") == [
-            "计算", "英文",
+            "计算", "英文", "清空",
         ]
         assert browser.eval(
             "getComputedStyle(document.querySelector('.composer-actions')).display"
@@ -171,12 +187,16 @@ def test_mobile_keyboard() -> None:
         for label in ["(", "1", "+", "2", ")", "*", "3"]:
             tap_keyboard(browser, label)
         assert browser.eval("window.__pycalc.getEditorValue()") == "(1+2)*3"
-        tap_keyboard(browser, "=")
+        tap_keyboard_run(browser)
         wait_idle(browser)
         assert browser.eval("window.__pycalc.lastEntry().result") == "9"
         assert browser.eval("window.__pycalc.getEditorValue()") == ""
         assert browser.eval("document.activeElement.classList.contains('cm-content')") is True
         assert browser.eval("getComputedStyle(document.querySelector('.cm-cursor')).display") != "none"
+
+        browser.eval("window.__pycalc.setEditorText('clear me')")
+        tap_keyboard(browser, "清空")
+        assert browser.eval("window.__pycalc.getEditorValue()") == ""
 
         browser.eval("window.__pycalc.setEditorText('')")
         tap_keyboard(browser, "库")
@@ -261,7 +281,7 @@ def test_mobile_keyboard() -> None:
         browser.eval("window.__pycalc.setEditorText('')")
         tap_keyboard(browser, "数学")
         time.sleep(0.2)
-        assert browser.eval("document.querySelectorAll('.mk-drawer-item').length") == 26
+        assert browser.eval("document.querySelectorAll('.mk-drawer-item').length") == 27
         tap_keyboard(browser, "sin")
         assert browser.eval("window.__pycalc.getEditorValue()") == "sin("
 
@@ -288,7 +308,7 @@ def test_mobile_keyboard() -> None:
         browser.eval("window.__pycalc.setLanguage('en')")
         time.sleep(0.2)
         assert browser.eval("[...document.querySelectorAll('.mk-tab')].map(x => x.textContent)") == [
-            "Calc", "English",
+            "Calc", "English", "Clear",
         ]
         browser.eval("window.__pycalc.setLanguage('zh')")
         time.sleep(0.2)
@@ -365,7 +385,7 @@ def test_ios_keyboard() -> None:
         moved = browser.eval("parseFloat(document.querySelector('.cm-cursor').style.left)")
         assert moved < left_after, (left_after, moved)
         assert browser.eval("window.__pycalc.getEditorValue()") == "123"
-        tap_keyboard(browser, "=")
+        tap_keyboard_run(browser)
         wait_idle(browser)
         assert browser.eval("window.__pycalc.lastEntry().result") == "123"
         assert browser.eval("window.__pycalc.getEditorValue()") == ""
@@ -374,6 +394,33 @@ def test_ios_keyboard() -> None:
         ) == "false"
         browser.screenshot(ART / "keyboard-ios.png")
     log("  PASS iPhone keyboard")
+
+
+def test_dataframe_summary() -> None:
+    log("[10] DataFrame variable summary")
+    html = build_case(
+        "dataframe314.html",
+        ["numpy", "pandas", "polars"],
+        "314.0.7",
+        aliases={"pd": "pandas", "pl": "polars"},
+    )
+    profile = OUT / "profiles" / "dataframe-summary"
+    shutil.rmtree(profile, ignore_errors=True)
+    with Browser(file_url(html), profile=profile, timeout=180) as browser:
+        browser.wait_ready(timeout=180)
+        browser.run_cell(
+            "import pandas as pd\n"
+            "import polars as pl\n"
+            "pdf = pd.DataFrame({'alpha': [1, 2], 'beta': [3, 4], 'gamma': [5, 6]})\n"
+            "pldf = pl.DataFrame({'alpha': [1, 2], 'beta': [3, 4], 'gamma': [5, 6]})"
+        )
+        rows = {row["name"]: row for row in browser.eval("window.__pycalc.variables()")}
+        for name in ("pdf", "pldf"):
+            value = rows[name]["value"]
+            assert "shape=(2, 3)" in value, (name, value)
+            assert "columns=['alpha', 'beta', 'gamma']" in value, (name, value)
+            assert "\n" not in value and "0  1  2" not in value, (name, value)
+    log("  PASS DataFrame summary")
 
 
 def test_minimal_314() -> None:
@@ -837,33 +884,29 @@ def test_new_features() -> None:
         )
         assert width_after > width_before, (width_before, width_after)
 
-        # compact number prompts copy the input/output to the clipboard
+        # compact number prompts insert at the cursor without clearing the editor
         prompt_texts = browser.eval(
             "[...document.querySelectorAll('.prompt-btn')].map((item) => item.textContent)"
         )
         assert prompt_texts and all(text.startswith("[") and text.endswith("]")
                                     for text in prompt_texts), prompt_texts
         assert not any("In [" in text or "Out[" in text for text in prompt_texts)
-        browser.call(
-            "Browser.grantPermissions",
-            {"origin": "file://", "permissions": ["clipboardReadWrite", "clipboardSanitizedWrite"]},
-        )
         browser.eval("window.__pycalc.setEditorText('12')")
         browser.eval("window.__pycalc.insertAtCursor('X')")
         assert browser.eval("window.__pycalc.getEditorValue()") == "12X"
-        browser.eval("window.__pycalc.setEditorText('')")
+        browser.eval("window.__pycalc.setEditorText('prefix ')")
         browser.eval(
             "[...document.querySelectorAll('.entry')]"
             ".find(e => e.textContent.includes('x = 1'))"
             ".querySelector('.prompt-btn.in').click()"
         )
-        copied_input = browser.eval("navigator.clipboard.readText()")
-        assert copied_input.startswith("x = 1"), copied_input
-        assert browser.eval("window.__pycalc.getEditorValue()") == ""
+        inserted_input = browser.eval("window.__pycalc.getEditorValue()")
+        assert inserted_input.startswith("prefix x = 1"), inserted_input
+        browser.eval("window.__pycalc.setEditorText('')")
         browser.eval(
             "[...document.querySelectorAll('.prompt-btn.out')].at(-1).click()"
         )
-        assert browser.eval("navigator.clipboard.readText()").strip() != ""
+        assert browser.eval("window.__pycalc.getEditorValue()").strip() != ""
 
         # Enter mode: incomplete code stays, complete code runs and clears
         browser.eval("window.__pycalc.setRunKey('enter')")
@@ -1021,6 +1064,7 @@ def main() -> int:
         test_ios_keyboard()
         test_full_0278()
         test_custom_libraries()
+        test_dataframe_summary()
         test_new_features()
         test_cross_version_history()
     except Exception:

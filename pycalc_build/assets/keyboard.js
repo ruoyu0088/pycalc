@@ -150,6 +150,17 @@
       });
       host.appendChild(button);
     }
+
+    const clear = document.createElement('div');
+    clear.setAttribute('role', 'button');
+    clear.setAttribute('tabindex', '-1');
+    clear.className = 'mk-tab mk-clear-tab';
+    clear.textContent = t('keyboard.key.clearInput');
+    clear.setAttribute('aria-label', clear.textContent);
+    bindPress(clear, () => {
+      if (state.callbacks.clear) state.callbacks.clear();
+    });
+    host.appendChild(clear);
   }
 
   function activeTab() {

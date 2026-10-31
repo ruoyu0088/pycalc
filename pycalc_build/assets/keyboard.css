@@ -36,6 +36,19 @@
   color: var(--accent);
 }
 
+.mk-clear-tab {
+  margin-left: 4px;
+  padding-left: 14px;
+  border-left: 1px solid var(--border-soft);
+  border-radius: 0 6px 6px 0;
+  color: var(--muted);
+}
+
+.mk-clear-tab.pressed {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
 .mk-panel {
   padding: 6px;
   min-height: 0;

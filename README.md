@@ -189,7 +189,7 @@ https://ruoyu0088.github.io/pycalc/
 
 - **三语界面**：中文 / English / 日本語。HTML 在顶栏切换；Tk 构建器在右上角切换。语言偏好会记住，首次默认跟随浏览器/系统语言。
 - **一个连续输出块**：不再为每条输入输出生成独立卡片，也没有“成功 / 时间”标题栏。输入和输出依次排在一个可滚动面板里。
-- **编号即复制**：输入和输出前只显示 `[1]`、`[2]` 这样的编号；点击编号把对应代码或输出文本复制到剪贴板。只有图片、没有文本的输出会提示没有可复制文本。
+- **编号即插入**：输入和输出前只显示 `[1]`、`[2]` 这样的编号；点击编号会把对应代码或输出文本插入到当前编辑器光标处，不会清空输入框。只有图片、没有文本的输出会提示没有可插入文本。
 - **`ans` 保存上一次有效结果**：每次运行后，如果最后一个表达式的结果不是 `None`，就把该对象保存到 `ans`。`print(...)`、纯赋值、显式 `None` 和异常都不会覆盖上一次的 `ans`；`ans` 会进入变量表并随会话快照保存/恢复。
 - **运行后清空输入框**；`↑` / `↓` 在历史输入之间切换，并在回到最新一条时恢复未提交的草稿。
 - **侧栏宽度可调**：拖动侧栏和主区之间的分隔条即可调整，宽度会记住。窄屏时侧栏变为抽屉，分隔条自动隐藏。
@@ -205,7 +205,7 @@ https://ruoyu0088.github.io/pycalc/
 - **明暗主题**：CSS、CodeMirror 语法高亮、Matplotlib 默认样式一起切换。首次跟随系统 `prefers-color-scheme`，之后记住选择。Matplotlib 只影响切换主题之后生成的图，历史 PNG 不重绘。
 - **扩展库 checkbox**：输入框上方列出**构建时库定义**里的每个别名，例如 `numpy (np)`、`matplotlib.pyplot (plt)`、`sympy (sp)`、`pandas (pd)`。勾选后自动导入，无需写 `import`。新会话默认只加载 Math，扩展库需要勾选；选择状态保存在会话里，切换会话时恢复。
 - **Math 始终加载**：`sin, cos, tan, sqrt, exp, log, log10, factorial, pi, e, inf, nan` 等名字可直接使用，像普通计算器一样；Math 不出现在扩展库列表中，也不会写入变量表。
-- **左侧栏两张表**：当前会话的用户变量（名称 / 类型 / 值）和用户函数（名称 / 参数）。每次运行、切换会话、修改扩展库后刷新；自动导入的名字和函数不会出现在表里。
+- **左侧栏两张表**：当前会话的用户变量（名称 / 类型 / 值）和用户函数（名称 / 参数）。pandas / polars 的 `DataFrame` 值只显示 `shape` 和前 8 个列名，不显示完整表格。每次运行、切换会话、修改扩展库后刷新；自动导入的名字和函数不会出现在表里。
 
 ---
 
@@ -213,10 +213,11 @@ https://ruoyu0088.github.io/pycalc/
 
 `pointer: coarse` 设备会在 `#app` 底部创建屏幕键盘，作为 flex 布局的一部分（不是 fixed 覆盖层）。桌面浏览器不创建键盘 DOM，`inputmode` 也不被修改。
 
-### 两个 tab
+### 两个输入 tab + 清空按钮
 
-- **计算**：左侧 4 个纵向按钮（变量 / 函数 / 数学 / 库），右侧 5×5 数字键盘；`0` 跨 3 列，`=` 跨 2 列并直接运行。
+- **计算**：左侧 5 个纵向按钮（变量 / 函数 / 数学 / 库 / Python），右侧 6×5 数字/符号键盘；数值键、`π`、括号、空格、换行和运行键都在这里。
 - **英文**：字母态 5 行，`⇧` 只让下一个字母大写；`123` 切到数字态，`ABC` 切回。数字态包含符号和 `空格 / ← / → / 回车`。
+- **清空**：位于英文 tab 后面，只清空编辑器内容，不改变当前 tab、历史或变量。
 
 点击左上 4 个按钮会从**屏幕顶部**滑下抽屉；变量/函数/库在打开瞬间实时读取，运行后新增的 `f` 或变量立即可见。函数项自动补 `(`。
 
@@ -322,7 +323,7 @@ pycalc_build/keyboard_layout.py -> LAYOUT
    - 314.x：把 `pyodide.asm.mjs` 以 Blob URL 动态 import，把 default 作为 `createPyodideModule` 传入。
    - 0.27/0.29.x：内联 `pyodide.asm.js`，它定义全局 `_createPyodideModule`，加载器自动跳过二次加载。
 4. **会话层**：IndexedDB 存 `meta / sessionIndex / sessionData`；Python 侧 glue 提供 `run / snapshot / restore / reset / replay imports / figure capture`。
-5. **前端**：CodeMirror 6（Python 高亮、行号、明暗主题、Enter/Ctrl+Enter 模式、历史上下键）、一个连续输出块、可点击的编号复制、扩展库 checkbox、变量/函数侧栏、流式 stdout/stderr。
+5. **前端**：CodeMirror 6（Python 高亮、行号、明暗主题、Enter/Ctrl+Enter 模式、历史上下键）、一个连续输出块、可点击的编号插入、扩展库 checkbox、变量/函数侧栏、流式 stdout/stderr。
 6. **手机键盘**：`keyboard_layout.py` 生成 `CFG.keyboard`；`keyboard.js` 只做渲染/动作分发；`app.js` 提供编辑器回调；全部内联进 HTML。
 
 构建时不需要 Node；`pycalc_build/assets/editor.bundle.js` 已提交。只有修改编辑器源码时才需要：
@@ -351,8 +352,9 @@ python tests\acceptance.py
 - Math 默认可用（`sin(pi/2)`），无需 import；
 - numpy / sympy / matplotlib 与图片输出；
 - 三语切换、扩展库自动导入与按会话恢复、变量/函数表；
-- 一个连续输出块、`[n]` 编号复制到剪贴板；
-- 手机系统键盘不接管：Android `inputmode=none`、iPhone `contenteditable=false` + focus 光标、虚拟键盘 DOM、calc/en 两 tab、`(1+2)*3` → 9、`⇧` / `123` / `ABC`、语言切换即时更新；
+- 一个连续输出块、`[n]` 编号插入到当前光标且不清空已有内容；
+- pandas / polars `DataFrame` 变量只显示 shape 和列名；
+- 手机系统键盘不接管：Android `inputmode=none`、iPhone `contenteditable=false` + focus 光标、虚拟键盘 DOM、calc/en 两 tab + 清空按钮、`(1+2)*3` → 9、`⇧` / `123` / `ABC`、语言切换即时更新；
 - 库快捷 tab：只显示勾选库、别名标签、无 `?`/`.`/`(` 的按钮文字、`?` / `?.` / `.` 插入规则、对象专属成员提示；
 - 属性补全（`x.` / `np.`）、类型推断（`ndarray`）、函数签名 Hint、括号/引号自动配对、选区高对比；
 - SymPy 文本/数学输出切换（顶栏图标）、MathML 渲染、跨刷新偏好恢复；
