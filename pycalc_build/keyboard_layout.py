@@ -81,7 +81,7 @@ LAYOUT = {
                         {"label": "]", "insert": "]"},
                         {"label": "0", "insert": "0"},
                         {"label": "⏎", "insert": "\n"},
-                        {"label": "=", "action": "run", "style": "run"},
+                        {"label": "▶", "action": "run", "style": "run"},
                     ],
                 ],
             },
