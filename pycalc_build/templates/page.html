@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#20252e">
+<link rel="manifest" href="./manifest.json">
 <title>PyCalc</title>
 <style>
 __PYCALC_CSS__
@@ -137,5 +139,22 @@ __PYCALC_ASM__
 <script>__PYCALC_PYODIDE_JS__</script>
 __PYCALC_EDITOR_JS__
 <script>__PYCALC_APP_JS__</script>
+<script>
+(() => {
+  const localhost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+  const swAllowed =
+    location.protocol === 'https:' ||
+    (location.protocol === 'http:' && localhost);
+  if (!('serviceWorker' in navigator) || !swAllowed) return;
+  window.addEventListener('load', () => {
+    if (navigator.storage && typeof navigator.storage.persist === 'function') {
+      navigator.storage.persist().catch(() => {});
+    }
+    navigator.serviceWorker.register('./sw.js').catch((err) => {
+      console.warn('[PyCalc] Service Worker registration failed:', err);
+    });
+  });
+})();
+</script>
 </body>
 </html>

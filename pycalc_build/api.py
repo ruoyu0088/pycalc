@@ -24,6 +24,7 @@ from .config import (
 from .embed import encode_file, should_gzip_runtime
 from .i18n import MESSAGES, tr
 from .libraries import default_aliases
+from .pwa import write_pwa_files
 from .render import render_page
 from .resolve import Package, package_version_map, resolve_closure
 from .runtime import RuntimeSpec, ensure_runtime, ensure_wheel
@@ -283,6 +284,8 @@ def build(config: BuildConfig, log: Log | None = None) -> BuildResult:
                 temp.unlink()
             except OSError:
                 pass
+
+    write_pwa_files(output, html, log=lambda message: say(f"[PWA] {message}"))
 
     size = output.stat().st_size
     elapsed = time.time() - started

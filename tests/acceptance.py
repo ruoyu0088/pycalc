@@ -12,9 +12,13 @@ layouts.
 
 from __future__ import annotations
 
+import functools
+import http.server
 import json
 import shutil
+import socket
 import sys
+import threading
 import time
 import traceback
 from pathlib import Path
@@ -253,7 +257,7 @@ def test_full_314() -> None:
 
 
 def test_full_0278() -> None:
-    log("[3] full build / 0.27.8 classic")
+    log("[4] full build / 0.27.8 classic")
     html = build_case("full0278.html", ["numpy", "sympy", "matplotlib"], "0.27.8")
     profile = OUT / "profiles" / "full0278"
     shutil.rmtree(profile, ignore_errors=True)
@@ -287,7 +291,7 @@ def test_full_0278() -> None:
 
 
 def test_custom_libraries() -> None:
-    log("[4] custom library aliases")
+    log("[5] custom library aliases")
     html = build_case(
         "custom314.html",
         ["numpy"],
@@ -314,8 +318,108 @@ def test_custom_libraries() -> None:
     log("  PASS custom libraries")
 
 
+def test_pwa() -> None:
+    log("[3] PWA service worker / offline / file protocol")
+    html = OUT / "full314.html"
+    assets = ["full314.html", "manifest.json", "sw.js", "icon-192.png", "icon-512.png"]
+    for name in assets:
+        assert (OUT / name).exists(), name
+
+    class QuietHandler(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+    handler = functools.partial(QuietHandler, directory=str(OUT))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    port = server.server_address[1]
+    url = f"http://127.0.0.1:{port}/full314.html"
+    profile = OUT / "profiles" / "pwa"
+    shutil.rmtree(profile, ignore_errors=True)
+    try:
+        with Browser(url, profile=profile, timeout=180) as browser:
+            browser.wait_ready(timeout=180)
+            registration = browser.eval(
+                "Promise.race([navigator.serviceWorker.ready.then((r) => ({"
+                "scope: r.scope, state: r.active && r.active.state})),"
+                " new Promise((_, reject) => setTimeout(() => reject("
+                "new Error('service worker timeout')), 30000))])"
+            )
+            assert registration["state"] == "activated", registration
+            deadline = time.time() + 30
+            names = []
+            while time.time() < deadline:
+                names = browser.eval("caches.keys()")
+                if names:
+                    break
+                time.sleep(0.25)
+            assert any(name.startswith("pycalc-") for name in names), names
+            cached = browser.eval(
+                "caches.keys().then(async (names) => {"
+                " const out = {};"
+                " for (const name of names) {"
+                "   const cache = await caches.open(name);"
+                "   out[name] = (await cache.keys()).map((request) => request.url);"
+                " } return out; })"
+            )
+            flat = [item for values in cached.values() for item in values]
+            assert any(item.endswith("/full314.html") for item in flat), flat
+            assert any(item.endswith("/manifest.json") for item in flat), flat
+            assert any(item.endswith("/icon-192.png") for item in flat), flat
+
+            # The page's fetch shim intentionally blocks external requests, so
+            # read the manifest with XHR (the browser's manifest loader also
+            # bypasses the page shim).
+            manifest = browser.eval(
+                "new Promise((resolve, reject) => {"
+                " const request = new XMLHttpRequest();"
+                " request.open('GET', './manifest.json');"
+                " request.onload = () => resolve(JSON.parse(request.responseText));"
+                " request.onerror = () => reject(new Error('manifest request failed'));"
+                " request.send(); })"
+            )
+            assert manifest["start_url"] == "./", manifest
+            assert manifest["display"] == "standalone", manifest
+
+            browser.call(
+                "Network.emulateNetworkConditions",
+                {
+                    "offline": True,
+                    "latency": 0,
+                    "downloadThroughput": 0,
+                    "uploadThroughput": 0,
+                },
+            )
+            browser.call("Page.reload", {"ignoreCache": True})
+            browser.wait_ready(timeout=180)
+            assert browser.eval("window.__pycalcVersion")["pyodide"] == "314.0.7"
+            assert browser.run_cell("1 + 1")["result"] == "2"
+            browser.call(
+                "Network.emulateNetworkConditions",
+                {
+                    "offline": False,
+                    "latency": 0,
+                    "downloadThroughput": -1,
+                    "uploadThroughput": -1,
+                },
+            )
+
+        # file:// must skip SW registration and remain fully usable.
+        with Browser(file_url(html), profile=OUT / "profiles" / "pwa-file", timeout=180) as browser:
+            browser.wait_ready(timeout=180)
+            assert browser.eval("navigator.serviceWorker.controller") is None
+            assert browser.run_cell("1 + 1")["result"] == "2"
+            assert not any("Uncaught" in line for line in browser.console), browser.console[-5:]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+    log("  PASS PWA")
+
+
 def test_new_features() -> None:
-    log("[5] languages, libraries, tables, compact console, editor behaviour")
+    log("[6] languages, libraries, tables, compact console, editor behaviour")
     html = OUT / "full314.html"
     profile = OUT / "profiles" / "new-features"
     shutil.rmtree(profile, ignore_errors=True)
@@ -559,7 +663,7 @@ def test_new_features() -> None:
 
 
 def test_cross_version_history() -> None:
-    log("[6] cross-version history (314 -> 0.27.8)")
+    log("[7] cross-version history (314 -> 0.27.8)")
     profile = OUT / "profiles" / "cross-version"
     shutil.rmtree(profile, ignore_errors=True)
     with Browser(file_url(OUT / "full314.html"), profile=profile, timeout=180) as browser:
@@ -590,6 +694,7 @@ def main() -> int:
     try:
         test_minimal_314()
         test_full_314()
+        test_pwa()
         test_full_0278()
         test_custom_libraries()
         test_new_features()

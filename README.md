@@ -129,6 +129,62 @@ env:
 
 ---
 
+## PWA / 手机安装
+
+构建时会在 HTML 旁边生成 4 个 PWA 附属文件：
+
+```text
+dist/
+├─ pycalc.html
+├─ manifest.json
+├─ sw.js
+├─ icon-192.png
+└─ icon-512.png
+```
+
+`pycalc.html` 本身仍然是一个完全自包含的单文件；PWA 文件只是额外的兄弟文件，用于安装和离线缓存。Service Worker 只缓存入口 HTML、manifest 和图标——Pyodide/NumPy/Matplotlib 等运行时都在 HTML 内部，不需要额外缓存。
+
+`manifest.json` 使用亮色启动背景 `#f6f7f9` 和深色 `theme_color: #20252e`：manifest 是静态的，不能跟随系统主题；亮色背景匹配默认亮色界面，深色主题色匹配顶栏/状态栏。若要深色启动画面，可把两者都改为 `#0d1117`。
+
+### 桌面验证
+
+1. 在 `dist/` 下运行 `python -m http.server 8000`，打开 `http://localhost:8000/pycalc.html`。
+2. Chrome/Edge DevTools → **Application → Service Workers**，确认 `sw.js` 为 **activated**。
+3. **Application → Cache Storage**，应出现 `pycalc-<html-hash>`，包含入口页、`manifest.json` 和两个图标。
+4. 在 **Network** 面板勾选 **Offline** 后刷新，页面应完整加载，并能运行 `1+1`。
+
+`http://localhost` / `127.0.0.1` 被浏览器视为安全上下文，所以本地也允许 Service Worker；其他普通 `http://` 页面、`file://` 页面不会注册。
+
+### Android Chrome
+
+用 HTTPS 打开站点，例如：
+
+```text
+https://ruoyu0088.github.io/pycalc/
+```
+
+菜单 → **添加到主屏幕**，从主屏幕图标打开时应为 standalone（无地址栏）。首次联网后 Service Worker 会缓存入口；断网后仍可打开和执行。
+
+### iOS Safari
+
+- `file://` 不支持 IndexedDB，会话无法保存。
+- 通过 `https://` 打开后可以“添加到主屏幕”，也支持 Service Worker 离线缓存。
+- iOS 的 ITP 可能在长期不访问后清理站点存储，IndexedDB/缓存可能丢失；这是系统限制，无法通过前端绕过。
+
+### 更新与边界
+
+- `sw.js` 的缓存版本号来自最终 HTML 的 SHA256 前 8 位；**HTML 内容变化**时缓存名变化，用户下次打开会拉新版本。
+- 同内容重复构建不会改变 `sw.js`；这是为了避免每次部署都让用户重新下载整个 HTML。
+- 更新通常需要刷新两次：第一次拿到新 Service Worker，第二次页面由新缓存提供。
+- `skipWaiting()` + `clients.claim()` 已启用，但没有额外的“更新提示”UI。
+- `file://` 下 manifest 会被浏览器忽略，SW 注册被协议判断跳过；HTML 核心功能不受影响，只是不能安装/离线。
+- `manifest.json` 的 `start_url` 固定为 `"./"`（Pages 上就是 `index.html`）。本地用 `pycalc.html` 做 HTTP 验收时，SW 会单独缓存 `pycalc.html`，离线刷新正常；但本地“安装”的启动页会指向目录，因此正式安装/主屏幕测试请使用 Pages 上的 `https://.../pycalc/` URL。
+- Service Worker 缓存和 IndexedDB 都可能被浏览器在存储压力下清理。注册成功后会静默请求 `navigator.storage.persist()`，提高保留概率，但不能保证 iOS/存储清理场景下永久保留。
+- 当前 Pages 构建包含 pandas/polars，HTML 约 **64 MB**；首次安装/离线缓存会比基础版本更重。
+- 本地 `file://` 与 Pages 的 `https://` 是不同 origin，两边会话不共享。
+
+---
+
 ## 界面功能
 
 - **三语界面**：中文 / English / 日本語。HTML 在顶栏切换；Tk 构建器在右上角切换。语言偏好会记住，首次默认跟随浏览器/系统语言。
@@ -167,6 +223,7 @@ env:
 | 仅标准库 | 10.1 MB（9.6 MiB） |
 | + numpy + sympy | 约 20.3 MB |
 | + numpy + sympy + matplotlib | **34.0 MB / 32.4 MiB**（314.0.7）；**32.7 MB / 31.1 MiB**（0.27.8） |
+| + 上述 + pandas + polars（当前 Pages） | 约 **64 MB / 61 MiB** |
 
 体积主要来自 wheel（numpy/sympy/matplotlib 及其依赖）和 wasm。`file://` 下浏览器不会发送 `Accept-Encoding`，所以首次打开要解析整个文件；现代桌面 Chrome/Edge 通常 3–6 秒完成启动。
 
@@ -180,7 +237,7 @@ env:
   - 不会把数据写进 `TestDB_LocalFile` 之类的通用名称；若同名数据库的 `appId` 不匹配，会拒绝读写而不是混用。
 - 语言、主题、运行键是**全局界面偏好**，存在 IndexedDB `meta`；扩展库勾选是**按会话**保存。
 - 数据结构为 schema v2；打开 v1 旧会话时会自动迁移（保留历史与变量，扩展库默认为空）。会话切换时先清空 `__main__`、应用 Math 和当前扩展库、回放历史中的顶层 `import`，再恢复目标快照。
-- 命名空间使用 **cloudpickle**。每次执行后异步保存；切换会话或页面隐藏时也会保存。自动导入的 `np/plt/sp`、Math 名字不进入快照。
+- 命名空间使用 **cloudpickle**。每次执行后异步保存；切换会话或页面隐藏时也会保存。构建库定义自动导入的别名、Math 名字不进入快照。
 - 历史输出（stdout/stderr、结果、异常、matplotlib PNG）随会话保存；图片以 Blob 存入 IndexedDB。
 - cloudpickle 自检失败时降级为 JSON 基础类型，并明确提示函数/类不会恢复。
 
@@ -244,7 +301,8 @@ python tests\acceptance.py
 - 明暗主题与 Matplotlib 只影响后续图；
 - 多个会话的新建/重命名/删除/切换、变量隔离、刷新恢复；
 - 复制 HTML、重建 HTML 后仍能读到会话；
-- 314.0.7 与 0.27.8 两种运行时结构、跨版本历史保留。
+- 314.0.7 与 0.27.8 两种运行时结构、跨版本历史保留；
+- PWA 五文件生成、manifest/SW 版本、本地 HTTP 下 SW activated/缓存、断网刷新、`file://` 不注册 SW。
 
 ---
 
