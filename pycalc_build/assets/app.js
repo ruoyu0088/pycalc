@@ -217,6 +217,7 @@
     completions: [],
     attributeCache: new Map(),
     historyNav: { index: null, draft: '' },
+    redoStack: [],
     suppressEditorSave: false,
     ui: { ...DEFAULT_UI },
     status: null,
@@ -270,7 +271,6 @@
 
   function setEngine(engine) {
     state.engine = engine;
-    renderEngineBadge();
   }
 
   function setTypeHint(text) {
@@ -278,23 +278,6 @@
     if (!element) return;
     element.textContent = text || '';
     element.classList.toggle('hidden', !text);
-  }
-
-  function renderEngineBadge() {
-    const node = $('engine-badge');
-    if (state.engine === 'cloudpickle') {
-      node.textContent = I18n.t('engine.cloudpickle');
-      node.className = 'badge good';
-      node.title = I18n.t('engine.cloudpickleTitle');
-    } else if (state.engine === 'json') {
-      node.textContent = I18n.t('engine.json');
-      node.className = 'badge warn';
-      node.title = I18n.t('engine.jsonTitle');
-    } else {
-      node.textContent = I18n.t('engine.initializing');
-      node.className = 'badge';
-      node.title = '';
-    }
   }
 
   function setOverlay(titleKey, detailKey, params, error) {
@@ -882,10 +865,12 @@ del _pycalc_glue_source
     state.namespace = data.namespace || null;
     state.namespaceMeta = data.namespaceMeta || null;
     state.historyNav = { index: null, draft: '' };
+    state.redoStack = [];
     renderConsole();
     resetEditorForSession(state.draft);
     renderLibraryBar();
     updateHeader();
+    updateHistoryButtons();
   }
 
   async function restoreActiveSession() {
@@ -1112,6 +1097,47 @@ del _pycalc_glue_source
   async function deleteSession() {
     if (state.busy || !state.activeId) return;
     await deleteSessionById(state.activeId, true);
+  }
+
+  async function clearCurrentSession(ask = true) {
+    if (state.busy || !state.ready || !state.activeId) return false;
+    if (ask && !window.confirm(I18n.t('session.clearConfirm', { name: state.activeName }))) {
+      return false;
+    }
+    state.busy = true;
+    updateBusyUi();
+    try {
+      if (py) {
+        py.reset();
+        applyLibraries(false);
+        py.setPlotTheme(state.ui.theme);
+      }
+      state.history = [];
+      state.redoStack = [];
+      state.executionCount = 0;
+      state.draft = '';
+      state.namespace = null;
+      state.namespaceMeta = null;
+      state.historyNav = { index: null, draft: '' };
+      state.activeOutput = null;
+      renderConsole();
+      resetEditorForSession('');
+      updateHeader();
+      refreshInspector();
+      updateHistoryButtons();
+      setStatus('status.ready');
+      toast('session.cleared');
+      await queueSave({ snapshot: false });
+      return true;
+    } catch (err) {
+      console.warn('clear session failed', err);
+      banner('session.clearFailed', { error: err.message || err }, 'bad', true);
+      return false;
+    } finally {
+      state.busy = false;
+      updateBusyUi();
+      updateHistoryButtons();
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -1394,26 +1420,57 @@ del _pycalc_glue_source
     button.className = `prompt-btn ${kind}`;
     button.dataset.kind = kind;
     button.dataset.n = String(n);
-    button.textContent = kind === 'in' ? `In [${n}]:` : `Out[${n}]:`;
+    button.textContent = `[${n}]`;
     button.title = I18n.t(kind === 'in' ? 'console.inputPromptTitle' : 'console.outputPromptTitle');
-    button.addEventListener('click', () => insertEntryText(entry, kind));
+    button.addEventListener('click', () => copyEntryText(entry, kind));
     return button;
   }
 
-  function insertEntryText(entry, kind) {
+  function legacyCopyText(text) {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.setAttribute('inputmode', 'none');
+    area.setAttribute('aria-hidden', 'true');
+    area.style.position = 'fixed';
+    area.style.left = '-9999px';
+    area.style.top = '0';
+    document.body.appendChild(area);
+    area.select();
+    let ok = false;
+    try {
+      ok = document.execCommand('copy');
+    } catch (_) {
+      ok = false;
+    }
+    area.remove();
+    return ok;
+  }
+
+  async function copyTextToClipboard(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (_) {
+        // Fall through to the legacy path (for example file:// or denied
+        // clipboard permission).
+      }
+    }
+    return legacyCopyText(text);
+  }
+
+  async function copyEntryText(entry, kind) {
     const text = kind === 'in' ? entry.code : outputText(entry);
     if (!text) {
       toast('console.noText');
-      return;
+      return false;
     }
-    try {
-      editor.insertAtCursor(text);
-      editor.focus();
-      state.historyNav.index = null;
-      toast(kind === 'in' ? 'console.copiedInput' : 'console.copiedOutput');
-    } catch (err) {
-      banner('banner.copyFailed', { error: err.message || err }, 'bad');
-    }
+    const ok = await copyTextToClipboard(text);
+    toast(ok
+      ? (kind === 'in' ? 'console.copiedInput' : 'console.copiedOutput')
+      : 'console.copyFailed');
+    return ok;
   }
 
   function mathResult(mathml) {
@@ -1504,6 +1561,38 @@ del _pycalc_glue_source
   function scrollToBottom() {
     const host = $('console');
     host.scrollTop = host.scrollHeight;
+  }
+
+  function updateHistoryButtons() {
+    const undo = $('history-undo');
+    const redo = $('history-redo');
+    if (!undo || !redo) return;
+    undo.disabled = state.busy || state.history.length === 0;
+    redo.disabled = state.busy || state.redoStack.length === 0;
+  }
+
+  function undoHistory() {
+    if (state.busy || state.history.length === 0) return;
+    const entry = state.history.pop();
+    state.redoStack.push(entry);
+    if (entry.n === state.executionCount) {
+      state.executionCount = Math.max(0, state.executionCount - 1);
+    }
+    state.historyNav = { index: null, draft: '' };
+    renderConsole();
+    updateHistoryButtons();
+    queueSave({ snapshot: false });
+  }
+
+  function redoHistory() {
+    if (state.busy || state.redoStack.length === 0) return;
+    const entry = state.redoStack.pop();
+    state.history.push(entry);
+    state.executionCount = Math.max(state.executionCount, Number(entry.n) || 0);
+    state.historyNav = { index: null, draft: '' };
+    renderConsole();
+    updateHistoryButtons();
+    queueSave({ snapshot: false });
   }
 
   function createLiveCell(entry) {
@@ -1638,6 +1727,7 @@ del _pycalc_glue_source
 
     state.busy = true;
     state.running = true;
+    state.redoStack = [];
     updateBusyUi();
     const n = state.executionCount + 1;
     state.executionCount = n;
@@ -1700,16 +1790,19 @@ del _pycalc_glue_source
     $('session-select').disabled = state.busy;
     $('session-new').disabled = state.busy;
     $('session-rename').disabled = state.busy;
+    $('session-clear').disabled = state.busy;
     $('session-delete').disabled = state.busy;
     $('language-select').disabled = state.busy;
     $('run-key').disabled = state.busy;
     $('theme-toggle').disabled = state.busy;
+    $('sympy-output-toggle').disabled = state.busy;
     for (const input of $('library-list').querySelectorAll('input')) {
       input.disabled = state.busy;
     }
     $('run').textContent = state.running
       ? I18n.t('run.running')
       : state.busy ? I18n.t('run.processing') : I18n.t('run.button');
+    updateHistoryButtons();
   }
 
   // ---------------------------------------------------------------------
@@ -1744,11 +1837,15 @@ del _pycalc_glue_source
   }
 
   function renderSympyControl() {
-    const wrap = $('sympy-output-wrap');
-    if (!wrap) return;
-    wrap.classList.toggle('hidden', !AVAILABLE_LIB_IDS.has('sympy'));
-    const select = $('sympy-output');
-    if (select) select.value = state.ui.sympyOutput;
+    const button = $('sympy-output-toggle');
+    if (!button) return;
+    const available = AVAILABLE_LIB_IDS.has('sympy');
+    button.classList.toggle('hidden', !available);
+    const math = state.ui.sympyOutput === 'math';
+    button.textContent = math ? '∑' : 'T';
+    button.title = I18n.t(math ? 'sympyOutput.toggleMath' : 'sympyOutput.toggleText');
+    button.setAttribute('aria-label', button.title);
+    button.setAttribute('aria-pressed', String(math));
   }
 
   function applySympyOutput(mode, persist = true) {
@@ -1793,11 +1890,11 @@ del _pycalc_glue_source
     $('sidebar-toggle').title = I18n.t('sidebar.toggleTitle');
     $('run-key').value = state.ui.runKey;
     renderRunHint();
-    renderEngineBadge();
     renderStatus();
     updateBusyUi();
     renderLibraryBar();
     renderSympyControl();
+    updateHistoryButtons();
     renderConsole();
     refreshInspector();
     renderOverlay();
@@ -1815,11 +1912,16 @@ del _pycalc_glue_source
     $('session-select').addEventListener('change', (event) => switchSession(event.target.value));
     $('session-new').addEventListener('click', newSession);
     $('session-rename').addEventListener('click', renameSession);
+    $('session-clear').addEventListener('click', () => clearCurrentSession(true));
     $('session-delete').addEventListener('click', deleteSession);
+    $('history-undo').addEventListener('click', undoHistory);
+    $('history-redo').addEventListener('click', redoHistory);
     $('overlay-retry').addEventListener('click', () => location.reload());
     $('language-select').addEventListener('change', (event) => setLanguage(event.target.value));
     $('run-key').addEventListener('change', (event) => applyRunKey(event.target.value));
-    $('sympy-output').addEventListener('change', (event) => applySympyOutput(event.target.value));
+    $('sympy-output-toggle').addEventListener('click', () => {
+      applySympyOutput(state.ui.sympyOutput === 'math' ? 'text' : 'math');
+    });
     $('theme-toggle').addEventListener('click', () => {
       applyTheme(state.ui.theme === 'dark' ? 'light' : 'dark');
     });
@@ -2069,6 +2171,9 @@ del _pycalc_glue_source
       stderr: entry.stderr,
       images: (entry.images || []).length,
     })),
+    undo: () => { undoHistory(); return state.history.length; },
+    redo: () => { redoHistory(); return state.history.length; },
+    clearSession: () => clearCurrentSession(false),
     runCell: async (code) => {
       if (!state.ready) throw new Error('PyCalc is not ready');
       setEditorText(code, true);

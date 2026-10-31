@@ -23,6 +23,7 @@ __PYCALC_CSS__
       <select id="session-select" data-i18n-title="session.selectTitle"></select>
       <button id="session-new" class="icon-btn" data-i18n-title="session.new">＋</button>
       <button id="session-rename" class="icon-btn" data-i18n-title="session.rename">✎</button>
+      <button id="session-clear" class="icon-btn" data-i18n-title="session.clear">↺</button>
       <button id="session-delete" class="icon-btn danger" data-i18n-title="session.delete">×</button>
     </div>
 
@@ -35,9 +36,9 @@ __PYCALC_CSS__
           <option value="ja">日本語</option>
         </select>
       </label>
+      <button id="sympy-output-toggle" class="icon-btn hidden" data-i18n-title="sympyOutput.toggleText">T</button>
       <button id="theme-toggle" class="icon-btn" data-i18n-title="theme.toggleTitle">☀</button>
       <button id="sidebar-toggle" class="icon-btn" data-i18n-title="sidebar.toggleTitle">☰</button>
-      <span id="engine-badge" class="badge"></span>
       <span id="save-status" class="save-status"></span>
     </div>
   </header>
@@ -88,13 +89,12 @@ __PYCALC_CSS__
           <!-- <span class="library-label" data-i18n="libraries.label"></span> -->
           <div id="library-list" class="library-list"></div>
           <span id="library-note" class="library-note" data-i18n="libraries.hint"></span>
-          <label id="sympy-output-wrap" class="sympy-output hidden">
-            <!-- <span data-i18n="sympyOutput.label"></span> -->
-            <select id="sympy-output" class="compact-select">
-              <option value="text" data-i18n="sympyOutput.text"></option>
-              <option value="math" data-i18n="sympyOutput.math"></option>
-            </select>
-          </label>
+          <div class="history-actions">
+            <button id="history-undo" class="icon-btn history-btn" type="button"
+                    data-i18n-title="history.undoTitle" disabled>↶</button>
+            <button id="history-redo" class="icon-btn history-btn" type="button"
+                    data-i18n-title="history.redoTitle" disabled>↷</button>
+          </div>
         </div>
 
         <div class="editor-shell">

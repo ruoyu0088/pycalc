@@ -194,12 +194,15 @@ https://ruoyu0088.github.io/pycalc/
 - **运行后清空输入框**；`↑` / `↓` 在历史输入之间切换，并在回到最新一条时恢复未提交的草稿。
 - **侧栏宽度可调**：拖动侧栏和主区之间的分隔条即可调整，宽度会记住。窄屏时侧栏变为抽屉，分隔条自动隐藏。
 - **IPython 风格属性补全**：输入 `x.`、`np.`、`np.linalg.` 会列出该对象的成员/方法/模块函数，函数项带签名；输入 `arr.re` 这类前缀会继续过滤。补全优先使用当前会话中**已执行对象**的真实类型；如果变量还没运行，也会从编辑器里的赋值/类型注解做静态推断，例如 `arr = np.linspace(1, 2)` 后输入 `arr.` 也能识别为 `numpy.ndarray`，底部显示 `arr : numpy.ndarray`。私有成员默认隐藏，输入 `_` 后展开。顶层变量/函数名仍然可以补全；不再补全 `if` / `for` 等关键字。
-- **SymPy 输出格式**：库栏右侧提供“SymPy 输出”选项，可在**文本**与**数学表达式**之间切换。数学模式使用浏览器原生 MathML 渲染 SymPy 结果（分式、幂、方程、矩阵等），切换会立即重绘已有输出；该偏好全局保存。普通 Python 结果始终按文本显示，`print()` 输出也不变。
+- **SymPy 输出格式**：顶栏主题按钮旁提供一个 `T` / `∑` 切换图标，在**文本**与**数学表达式**之间切换。数学模式使用浏览器原生 MathML 渲染 SymPy 结果（分式、幂、方程、矩阵等），切换会立即重绘已有输出；该偏好全局保存。普通 Python 结果始终按文本显示，`print()` 输出也不变。
+- **历史撤回/恢复**：库栏右侧提供 Undo / Redo，只移除或恢复最后一次输入的历史记录，不改变当前 Python 变量、`ans` 或函数。适合把输错的条目从历史里清掉；编号会复用。
+- **编号即复制**：输出区只显示 `[1]`、`[2]` 这样的编号，不再显示 `In` / `Out`；点击编号会把对应输入或输出文本复制到剪贴板（`file://` 下使用兼容回退）。
 - **函数调用 Hint**：在 `f(`、`np.linspace(`、`arr.reshape(` 内，光标附近显示签名；`Ctrl+Space` 可手动触发补全。
 - **括号/引号自动配对**：输入 `(`、`[`、`{`、`'`、`"` 自动补全右侧；选中文字后输入括号/引号会包裹选区。
 - **选中文字高对比**：编辑器选区在亮色/暗色主题下都有明显背景色，不再与普通文本混在一起。
 - 属性补全优先使用实时命名空间；尚未运行的赋值会对常见 numpy/sympy/matplotlib 构造器和类型注解做静态推断，其他复杂表达式仍建议先运行再补全。
 - **运行键可选**：`Ctrl/Cmd+Enter` 或 `Enter`。选择 `Enter` 时，只有 Python 认为代码“完整”才运行（`def`/`if`/括号未闭合、语法错误等都保持换行）；`Shift+Enter` 始终换行；输入法组合输入时不会误触发。
+- **触摸设备精简**：`pointer: coarse` 下隐藏运行键选择、运行按钮和底部提示栏，为后续屏幕键盘留出空间；桌面模式不变。
 - **明暗主题**：CSS、CodeMirror 语法高亮、Matplotlib 默认样式一起切换。首次跟随系统 `prefers-color-scheme`，之后记住选择。Matplotlib 只影响切换主题之后生成的图，历史 PNG 不重绘。
 - **扩展库 checkbox**：输入框上方列出**构建时库定义**里的每个别名，例如 `numpy (np)`、`matplotlib.pyplot (plt)`、`sympy (sp)`、`pandas (pd)`。勾选后自动导入，无需写 `import`。新会话默认只加载 Math，扩展库需要勾选；选择状态保存在会话里，切换会话时恢复。
 - **Math 始终加载**：`sin, cos, tan, sqrt, exp, log, log10, factorial, pi, e, inf, nan` 等名字可直接使用，像普通计算器一样；Math 不出现在扩展库列表中，也不会写入变量表。
@@ -231,7 +234,9 @@ https://ruoyu0088.github.io/pycalc/
 
 ## 会话与持久化
 
-- 页面顶部可以**新建 / 重命名 / 删除 / 切换**会话；每个会话有独立的名称、输入历史、执行计数、编辑器草稿、变量/函数快照，以及**扩展库勾选状态**。
+- 页面顶部可以**新建 / 重命名 / 清空 / 删除 / 切换**会话；每个会话有独立的名称、输入历史、执行计数、编辑器草稿、变量/函数快照，以及**扩展库勾选状态**。
+- **清空当前会话**会删除历史、变量、函数、`ans` 和编辑器内容，但保留会话名称、会话 ID 和扩展库勾选；操作前会确认。
+- 顶栏不再显示 `cloudpickle` / `仅基础类型` 徽标；高级快照不可用时仍会通过提示条告知降级。
 - 数据库固定为 `pycalc-app-v1`，并带有固定的 `appId` 校验：
   - 把 HTML **复制/移动到任何目录**、或者重新构建一个新 HTML，只要还是**同一个浏览器 profile**，都会读写同一份会话。
   - 不会把数据写进 `TestDB_LocalFile` 之类的通用名称；若同名数据库的 `appId` 不匹配，会拒绝读写而不是混用。
@@ -263,7 +268,7 @@ https://ruoyu0088.github.io/pycalc/
    - 314.x：把 `pyodide.asm.mjs` 以 Blob URL 动态 import，把 default 作为 `createPyodideModule` 传入。
    - 0.27/0.29.x：内联 `pyodide.asm.js`，它定义全局 `_createPyodideModule`，加载器自动跳过二次加载。
 4. **会话层**：IndexedDB 存 `meta / sessionIndex / sessionData`；Python 侧 glue 提供 `run / snapshot / restore / reset / replay imports / figure capture`。
-5. **前端**：CodeMirror 6（Python 高亮、行号、明暗主题、Enter/Ctrl+Enter 模式、历史上下键）、一个连续输出块、可点击的 In/Out 插入、扩展库 checkbox、变量/函数侧栏、流式 stdout/stderr。
+5. **前端**：CodeMirror 6（Python 高亮、行号、明暗主题、Enter/Ctrl+Enter 模式、历史上下键）、一个连续输出块、可点击的编号复制、扩展库 checkbox、变量/函数侧栏、流式 stdout/stderr。
 
 构建时不需要 Node；`pycalc_build/assets/editor.bundle.js` 已提交。只有修改编辑器源码时才需要：
 
@@ -291,9 +296,10 @@ python tests\acceptance.py
 - Math 默认可用（`sin(pi/2)`），无需 import；
 - numpy / sympy / matplotlib 与图片输出；
 - 三语切换、扩展库自动导入与按会话恢复、变量/函数表；
-- 一个连续输出块、点击 In/Out 在光标处插入；
+- 一个连续输出块、`[n]` 编号复制到剪贴板；
 - 属性补全（`x.` / `np.`）、类型推断（`ndarray`）、函数签名 Hint、括号/引号自动配对、选区高对比；
-- SymPy 文本/数学输出切换、MathML 渲染、跨刷新偏好恢复；
+- SymPy 文本/数学输出切换（顶栏图标）、MathML 渲染、跨刷新偏好恢复；
+- 历史 Undo / Redo、编号复用、变量不被撤回；清空当前会话；
 - `ans` 保存非 None 结果、None/错误不覆盖、跨刷新恢复；
 - 库定义文本解析、别名/模块去重、包→模块 provider 推断、GUI 配置持久化与旧配置迁移；
 - 侧栏拖动宽度并跨刷新记住；

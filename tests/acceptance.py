@@ -107,7 +107,8 @@ def test_minimal_314() -> None:
         version = browser.eval("window.__pycalcVersion")
         assert version["pyodide"] == "314.0.7" and version["python"] == "3.14.2", version
         assert browser.eval("window.__pycalc.engine()") == "cloudpickle"
-        assert browser.eval("document.getElementById('sympy-output-wrap').classList.contains('hidden')")
+        assert browser.eval("document.getElementById('sympy-output-toggle').classList.contains('hidden')")
+        assert browser.eval("document.getElementById('engine-badge') === null")
         assert browser.eval("document.querySelectorAll('.lib-chip').length") == 0
         run_and_check(browser, "print(1 + 1)", "2\n")
         assert browser.eval("window.__pycalc.getEditorValue()") == ""
@@ -213,7 +214,7 @@ def test_full_314() -> None:
             "import sympy as sp\nx = sp.symbols('x')\nprint(sp.integrate(x**2, x))",
             "x**3/3\n",
         )
-        assert browser.eval("!document.getElementById('sympy-output-wrap').classList.contains('hidden')")
+        assert browser.eval("!document.getElementById('sympy-output-toggle').classList.contains('hidden')")
         sympy_result = browser.run_cell("sp.integrate(x**2, x)")
         assert sympy_result["result"] == "x**3/3", sympy_result
         entry = browser.eval("window.__pycalc.lastEntry()")
@@ -224,6 +225,8 @@ def test_full_314() -> None:
         time.sleep(0.2)
         assert browser.eval("document.querySelectorAll('pre.result').length") == 0
         assert browser.eval("document.querySelectorAll('.math-result math').length") == 1
+        assert browser.eval("document.getElementById('sympy-output-toggle').textContent") == "∑"
+        assert browser.eval("document.getElementById('sympy-output-toggle').getAttribute('aria-pressed')") == "true"
 
         # &InvisibleTimes; is a MathML named entity that the XML parser
         # rejects; this expression must still render as math, not fall back.
@@ -235,6 +238,7 @@ def test_full_314() -> None:
         browser.eval("window.__pycalc.setSympyOutput('text')")
         time.sleep(0.2)
         assert browser.eval("document.querySelectorAll('pre.result').length") == 2
+        assert browser.eval("document.getElementById('sympy-output-toggle').textContent") == "T"
 
         run_and_check(
             browser,
@@ -554,7 +558,17 @@ def test_new_features() -> None:
         )
         assert width_after > width_before, (width_before, width_after)
 
-        # clickable In/Out prompts insert at the cursor instead of replacing
+        # compact number prompts copy the input/output to the clipboard
+        prompt_texts = browser.eval(
+            "[...document.querySelectorAll('.prompt-btn')].map((item) => item.textContent)"
+        )
+        assert prompt_texts and all(text.startswith("[") and text.endswith("]")
+                                    for text in prompt_texts), prompt_texts
+        assert not any("In [" in text or "Out[" in text for text in prompt_texts)
+        browser.call(
+            "Browser.grantPermissions",
+            {"origin": "file://", "permissions": ["clipboardReadWrite", "clipboardSanitizedWrite"]},
+        )
         browser.eval("window.__pycalc.setEditorText('12')")
         browser.eval("window.__pycalc.insertAtCursor('X')")
         assert browser.eval("window.__pycalc.getEditorValue()") == "12X"
@@ -564,12 +578,13 @@ def test_new_features() -> None:
             ".find(e => e.textContent.includes('x = 1'))"
             ".querySelector('.prompt-btn.in').click()"
         )
-        assert "x = 1" in browser.eval("window.__pycalc.getEditorValue()")
-        browser.eval("window.__pycalc.setEditorText('')")
+        copied_input = browser.eval("navigator.clipboard.readText()")
+        assert copied_input.startswith("x = 1"), copied_input
+        assert browser.eval("window.__pycalc.getEditorValue()") == ""
         browser.eval(
             "[...document.querySelectorAll('.prompt-btn.out')].at(-1).click()"
         )
-        assert browser.eval("window.__pycalc.getEditorValue()").strip() != ""
+        assert browser.eval("navigator.clipboard.readText()").strip() != ""
 
         # Enter mode: incomplete code stays, complete code runs and clears
         browser.eval("window.__pycalc.setRunKey('enter')")
@@ -653,12 +668,50 @@ def test_new_features() -> None:
         assert ui["sympyOutput"] == "math", ui
         assert abs(float(ui["sidebarWidth"]) - width_after) < 2, (ui, width_after)
         assert browser.eval("document.querySelector('.side-card h3').textContent") == "Variables"
-        assert browser.eval("document.getElementById('sympy-output').value") == "math"
+        assert browser.eval("document.getElementById('sympy-output-toggle').getAttribute('aria-pressed')") == "true"
         assert browser.eval("document.querySelectorAll('.math-result math').length") >= 1
         assert browser.eval("document.documentElement.dataset.theme") == "light"
         assert browser.eval("window.__pycalc.active()")["libraries"] == ["sympy"]
         assert_no_network(browser)
         browser.screenshot(ART / "new-features.png")
+
+        # history undo/redo: remove/restore an entry without touching variables
+        browser.eval("window.__pycalc.createSession('history ops')")
+        browser.wait_ready()
+        browser.run_cell("u = 1")
+        browser.run_cell("u + 1")
+        assert browser.eval("document.getElementById('history-undo').disabled") is False
+        assert browser.eval("document.getElementById('history-redo').disabled") is True
+        browser.eval("document.getElementById('history-undo').click()")
+        assert browser.eval("window.__pycalc.history()")[-1]["code"] == "u = 1"
+        variables = browser.eval("window.__pycalc.variables()")
+        assert any(row["name"] == "u" and row["value"] == "1" for row in variables), variables
+        assert any(row["name"] == "ans" and row["value"] == "2" for row in variables), variables
+        assert browser.eval("document.getElementById('history-redo').disabled") is False
+        browser.eval("document.getElementById('history-redo').click()")
+        assert browser.eval("window.__pycalc.history()")[-1]["code"] == "u + 1"
+        assert browser.eval("document.getElementById('history-redo').disabled") is True
+        browser.eval("document.getElementById('history-undo').click()")
+        browser.run_cell("3 + 3")
+        assert browser.eval("window.__pycalc.history()")[-1]["n"] == 2
+        assert browser.eval("document.getElementById('history-redo').disabled") is True
+
+        assert browser.eval("window.__pycalc.clearSession()") is True
+        assert browser.eval("window.__pycalc.history()") == []
+        assert browser.eval("window.__pycalc.variables()") == []
+        assert browser.eval("window.__pycalc.active()")["name"] == "history ops"
+        assert browser.eval("document.getElementById('history-undo').disabled") is True
+
+        # coarse-pointer mode hides the desktop run controls
+        browser.call(
+            "Emulation.setDeviceMetricsOverride",
+            {"width": 390, "height": 844, "deviceScaleFactor": 3, "mobile": True},
+        )
+        browser.call("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
+        assert browser.eval("matchMedia('(pointer: coarse)').matches") is True
+        assert browser.eval("getComputedStyle(document.querySelector('.composer-actions')).display") == "none"
+        browser.call("Emulation.clearDeviceMetricsOverride")
+        browser.call("Emulation.setTouchEmulationEnabled", {"enabled": False})
     log("  PASS new features")
 
 
