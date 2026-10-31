@@ -1928,6 +1928,8 @@ del _pycalc_glue_source
       moveLineStart: () => editor.moveLineStart && editor.moveLineStart(),
       moveLineEnd: () => editor.moveLineEnd && editor.moveLineEnd(),
       getEditorContentDOM: () => editor.getContentDOM && editor.getContentDOM(),
+      setEditable: (editable) => editor.setEditable && editor.setEditable(editable),
+      setCursorFromPoint: (x, y) => editor.setCursorFromPoint && editor.setCursorFromPoint(x, y),
     });
   }
 
@@ -2040,6 +2042,8 @@ del _pycalc_glue_source
         moveLineStart: () => cm.moveLineStart(),
         moveLineEnd: () => cm.moveLineEnd(),
         getContentDOM: () => cm.getContentDOM(),
+        setEditable: (editable) => cm.setEditable(editable),
+        setCursorFromPoint: (x, y) => cm.setCursorFromPoint(x, y),
         setCursorEnd: () => cm.setCursorEnd(),
         setTheme: (theme) => cm.setTheme(theme),
         setPlaceholder: (text) => cm.setPlaceholder(text),

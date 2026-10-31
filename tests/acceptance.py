@@ -118,6 +118,24 @@ def tap_keyboard(browser: Browser, label: str) -> None:
     browser.eval(f"window.__tap({json.dumps(label)})")
 
 
+def touch_keyboard(browser: Browser, label: str) -> None:
+    rect = browser.eval(
+        "(() => {"
+        f" const element = [...document.querySelectorAll('.mk-key,.mk-tab')]"
+        f"   .find((item) => item.textContent === {json.dumps(label)});"
+        " if (!element) throw new Error('no keyboard key');"
+        " const r = element.getBoundingClientRect();"
+        " return {x: r.x + r.width / 2, y: r.y + r.height / 2};"
+        "})()"
+    )
+    point = {
+        "x": rect["x"], "y": rect["y"],
+        "radiusX": 2, "radiusY": 2, "force": 1, "id": 1,
+    }
+    browser.call("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [point]})
+    browser.call("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+
+
 def test_mobile_keyboard() -> None:
     log("[4] mobile virtual keyboard")
     html = OUT / "full314.html"
@@ -169,6 +187,14 @@ def test_mobile_keyboard() -> None:
         assert browser.eval("window.__pycalc.getEditorValue()") == "np"
         assert browser.eval("!document.getElementById('mk-drawer').classList.contains('open')") is True
 
+        # A real touch (not just a synthetic PointerEvent) must not be
+        # swallowed by the backdrop's synthetic click after pointerup.
+        touch_keyboard(browser, "变量")
+        time.sleep(0.35)
+        assert browser.eval("document.getElementById('mk-drawer').classList.contains('open')") is True
+        tap_keyboard(browser, "×")
+        time.sleep(0.3)
+
         browser.eval("window.__pycalc.setEditorText('')")
         tap_keyboard(browser, "数学")
         time.sleep(0.2)
@@ -217,6 +243,74 @@ def test_mobile_keyboard() -> None:
         ) != "none"
         assert browser.eval("document.querySelector('.cm-content').getAttribute('inputmode')") is None
     log("  PASS mobile keyboard")
+
+
+def test_ios_keyboard() -> None:
+    log("[5] iPhone virtual keyboard")
+    html = OUT / "full314.html"
+    profile = OUT / "profiles" / "ios-keyboard"
+    shutil.rmtree(profile, ignore_errors=True)
+    user_agent = (
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) "
+        "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 "
+        "Mobile/15E148 Safari/604.1"
+    )
+    with Browser(file_url(html), profile=profile, timeout=180) as browser:
+        browser.call(
+            "Emulation.setUserAgentOverride",
+            {"userAgent": user_agent, "platform": "iPhone"},
+        )
+        browser.call(
+            "Emulation.setDeviceMetricsOverride",
+            {"width": 390, "height": 844, "deviceScaleFactor": 3, "mobile": True},
+        )
+        browser.call("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
+        browser.call("Page.reload", {"ignoreCache": True})
+        browser.wait_ready(timeout=180)
+        install_mobile_tap(browser)
+
+        assert browser.eval("document.body.classList.contains('mobile-keyboard-ios')") is True
+        assert browser.eval("!!document.querySelector('.mobile-keyboard')") is True
+        assert browser.eval("document.querySelector('.cm-content').getAttribute('contenteditable')") == "false"
+        assert browser.eval("document.querySelector('.cm-content').getAttribute('tabindex')") == "0"
+        assert browser.eval("document.querySelector('.cm-content').getAttribute('inputmode')") == "none"
+        assert browser.eval(
+            "document.querySelector('.cm-content').getAttribute('virtualkeyboardpolicy')"
+        ) == "manual"
+        assert browser.eval("document.activeElement.classList.contains('cm-content')") is True
+        assert browser.eval("getComputedStyle(document.querySelector('.cm-cursor')).display") == "block"
+
+        left_before = browser.eval("parseFloat(document.querySelector('.cm-cursor').style.left)")
+        for label in ["1", "2", "3"]:
+            tap_keyboard(browser, label)
+        assert browser.eval("window.__pycalc.getEditorValue()") == "123"
+        left_after = browser.eval("parseFloat(document.querySelector('.cm-cursor').style.left)")
+        assert left_after > left_before, (left_before, left_after)
+
+        line = browser.eval(
+            "(() => { const r = document.querySelector('.cm-line').getBoundingClientRect();"
+            " return {x: r.left + 8, y: r.top + r.height / 2}; })()"
+        )
+        browser.call(
+            "Input.dispatchMouseEvent",
+            {"type": "mousePressed", "x": line["x"], "y": line["y"], "button": "left", "clickCount": 1},
+        )
+        browser.call(
+            "Input.dispatchMouseEvent",
+            {"type": "mouseReleased", "x": line["x"], "y": line["y"], "button": "left", "clickCount": 1},
+        )
+        moved = browser.eval("parseFloat(document.querySelector('.cm-cursor').style.left)")
+        assert moved < left_after, (left_after, moved)
+        assert browser.eval("window.__pycalc.getEditorValue()") == "123"
+        tap_keyboard(browser, "=")
+        wait_idle(browser)
+        assert browser.eval("window.__pycalc.lastEntry().result") == "123"
+        assert browser.eval("window.__pycalc.getEditorValue()") == ""
+        assert browser.eval(
+            "document.querySelector('.cm-content').getAttribute('contenteditable')"
+        ) == "false"
+        browser.screenshot(ART / "keyboard-ios.png")
+    log("  PASS iPhone keyboard")
 
 
 def test_minimal_314() -> None:
@@ -383,7 +477,7 @@ def test_full_314() -> None:
 
 
 def test_full_0278() -> None:
-    log("[5] full build / 0.27.8 classic")
+    log("[6] full build / 0.27.8 classic")
     html = build_case("full0278.html", ["numpy", "sympy", "matplotlib"], "0.27.8")
     profile = OUT / "profiles" / "full0278"
     shutil.rmtree(profile, ignore_errors=True)
@@ -417,7 +511,7 @@ def test_full_0278() -> None:
 
 
 def test_custom_libraries() -> None:
-    log("[6] custom library aliases")
+    log("[7] custom library aliases")
     html = build_case(
         "custom314.html",
         ["numpy"],
@@ -545,7 +639,7 @@ def test_pwa() -> None:
 
 
 def test_new_features() -> None:
-    log("[7] languages, libraries, tables, compact console, editor behaviour")
+    log("[8] languages, libraries, tables, compact console, editor behaviour")
     html = OUT / "full314.html"
     profile = OUT / "profiles" / "new-features"
     shutil.rmtree(profile, ignore_errors=True)
@@ -828,7 +922,7 @@ def test_new_features() -> None:
 
 
 def test_cross_version_history() -> None:
-    log("[8] cross-version history (314 -> 0.27.8)")
+    log("[9] cross-version history (314 -> 0.27.8)")
     profile = OUT / "profiles" / "cross-version"
     shutil.rmtree(profile, ignore_errors=True)
     with Browser(file_url(OUT / "full314.html"), profile=profile, timeout=180) as browser:
@@ -861,6 +955,7 @@ def main() -> int:
         test_full_314()
         test_pwa()
         test_mobile_keyboard()
+        test_ios_keyboard()
         test_full_0278()
         test_custom_libraries()
         test_new_features()

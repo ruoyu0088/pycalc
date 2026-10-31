@@ -232,10 +232,11 @@ pycalc_build/keyboard_layout.py -> LAYOUT
 
 ### 系统键盘
 
-- 编辑器 `contentDOM` 设置 `inputmode="none"`、`autocorrect=off`、`autocapitalize=none`、`spellcheck=false`；键盘按钮的 `pointerdown` 全部 `preventDefault`，因此不会把焦点交给按钮。
-- **Android Chrome 优先**：`inputmode=none` 下保持 CodeMirror 焦点和光标，系统键盘不弹出。
-- 如果某个浏览器仍弹出 IME，`visualViewport` 高度骤降时会主动 `blur` 编辑器关闭系统键盘。这个兜底在 iOS 上可能以**失去可见光标**为代价；Android 正常路径不会触发。
-- 还没有真机自动化能力：DevTools 只能验证 DOM、布局、输入和 `inputmode`，系统键盘是否真正不弹出需要在 Android 真机上确认。
+- 编辑器 `contentDOM` 设置 `inputmode="none"`、`autocorrect=off`、`autocapitalize=none`、`spellcheck=false`、`virtualkeyboardpolicy=manual`；键盘按钮的 `pointerdown` 全部 `preventDefault`，因此不会把焦点交给按钮。
+- **Android Chrome**：`inputmode=none` 下保持 CodeMirror 焦点和光标，系统键盘不弹出；如果某个 IME 仍弹出，`visualViewport` 高度骤降时才主动 `blur` 关闭。
+- **iOS Safari**：不依赖 `inputmode=none`（iOS 对 contenteditable 不可靠）。键盘初始化时把 CodeMirror 切为 `EditorView.editable(false)` / `contenteditable=false`，但给 contentDOM 加 `tabindex=0` 并保持 focus，这样 CodeMirror 光标层仍能按时重绘；点击编辑器用 `posAtCoords` 设置选择位置，所有输入来自自定义键盘，系统键盘没有可编辑目标。
+- iOS 的 `.cm-cursor` 通过 `mobile-keyboard-ios` CSS 显示并按 CodeMirror 位置闪烁；这不是额外叠加的假光标，而是 CodeMirror 自己重绘的光标层。
+- 还没有真机自动化能力：DevTools 能验证 `contenteditable=false`、焦点、光标位置和输入，系统键盘是否真正不弹出还需要在 iPhone/Android 真机上确认。
 
 ### 屏幕适配
 
@@ -333,7 +334,7 @@ python tests\acceptance.py
 - numpy / sympy / matplotlib 与图片输出；
 - 三语切换、扩展库自动导入与按会话恢复、变量/函数表；
 - 一个连续输出块、`[n]` 编号复制到剪贴板；
-- 手机系统键盘不接管：`inputmode=none`、虚拟键盘 DOM、calc/en 两 tab、`(1+2)*3` → 9、库抽屉别名、`⇧` / `123` / `ABC`、语言切换即时更新；
+- 手机系统键盘不接管：Android `inputmode=none`、iPhone `contenteditable=false` + focus 光标、虚拟键盘 DOM、calc/en 两 tab、`(1+2)*3` → 9、库抽屉别名、`⇧` / `123` / `ABC`、语言切换即时更新；
 - 属性补全（`x.` / `np.`）、类型推断（`ndarray`）、函数签名 Hint、括号/引号自动配对、选区高对比；
 - SymPy 文本/数学输出切换（顶栏图标）、MathML 渲染、跨刷新偏好恢复；
 - 历史 Undo / Redo、编号复用、变量不被撤回；清空当前会话；

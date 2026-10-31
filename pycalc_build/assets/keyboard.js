@@ -7,6 +7,8 @@
   'use strict';
 
   const COARSE = window.matchMedia && window.matchMedia('(pointer: coarse)');
+  const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   let translate = (key) => key;
 
   const state = {
@@ -45,7 +47,13 @@
     const backdrop = document.createElement('div');
     backdrop.className = 'mk-drawer-backdrop hidden';
     backdrop.id = 'mk-drawer-backdrop';
-    backdrop.addEventListener('click', closeDrawer);
+    // Close on pointerdown, not click.  The drawer opens on pointerup, so the
+    // browser's synthetic click after that same tap can land on the newly
+    // visible backdrop and immediately close the drawer again.
+    backdrop.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      closeDrawer();
+    });
     document.body.appendChild(backdrop);
 
     const drawer = document.createElement('div');
@@ -63,11 +71,13 @@
   }
 
   /**
-   * Keep an Android IME from opening while preserving the CodeMirror caret.
+   * Keep the system IME out of the editing surface.
    *
-   * `inputmode=none` is the primary mechanism.  Some iOS versions ignore it;
-   * the visualViewport fallback closes an IME that still appears, which costs
-   * the caret on those browsers but still keeps the system keyboard hidden.
+   * Android honours inputmode=none on a contenteditable, so the CodeMirror
+   * caret stays visible.  iOS Safari does not; there we make CodeMirror
+   * programmatically read-only (contenteditable=false) and draw its caret via
+   * the mobile-keyboard-ios CSS.  Taps still move the selection through
+   * posAtCoords, and all edits come from the custom keyboard.
    */
   function disableSystemKeyboard() {
     const contentDOM = state.callbacks.getEditorContentDOM
@@ -76,11 +86,34 @@
     if (!contentDOM) return;
 
     contentDOM.setAttribute('inputmode', 'none');
+    contentDOM.setAttribute('virtualkeyboardpolicy', 'manual');
     contentDOM.setAttribute('autocorrect', 'off');
     contentDOM.setAttribute('autocapitalize', 'none');
     contentDOM.setAttribute('spellcheck', 'false');
     contentDOM.addEventListener('contextmenu', (event) => event.preventDefault(), true);
 
+    if (IS_IOS) {
+      document.body.classList.add('mobile-keyboard-ios');
+      if (state.callbacks.setEditable) state.callbacks.setEditable(false);
+      // A blurred CodeMirror hides and freezes its cursor layer.  Make the
+      // contenteditable=false surface focusable, then focus it: focus alone is
+      // harmless without contenteditable, but it lets CodeMirror repaint the
+      // caret at the selection.
+      contentDOM.setAttribute('tabindex', '0');
+      contentDOM.addEventListener('pointerdown', (event) => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        if (state.callbacks.setCursorFromPoint) {
+          state.callbacks.setCursorFromPoint(event.clientX, event.clientY);
+        }
+      }, true);
+      requestAnimationFrame(() => {
+        try { contentDOM.focus({ preventScroll: true }); } catch (_) { /* ignore */ }
+      });
+      return;
+    }
+
+    // Android: inputmode=none normally wins.  If an IME still appears, close
+    // it when the visual viewport shrinks.
     const viewport = window.visualViewport;
     if (!viewport) return;
     let baseline = Math.max(window.innerHeight || 0, viewport.height || 0);

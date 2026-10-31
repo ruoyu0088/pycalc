@@ -356,8 +356,10 @@ export function create(parent, options = {}) {
   const onTypeHint = options.onTypeHint || (() => {});
   const themeCompartment = new Compartment();
   const placeholderCompartment = new Compartment();
+  const editableCompartment = new Compartment();
   let currentTheme = options.theme === 'dark' ? 'dark' : 'light';
   let currentPlaceholder = options.placeholder || '';
+  let currentEditable = true;
 
   const customKeymap = Prec.highest(
     keymap.of([
@@ -416,6 +418,7 @@ export function create(parent, options = {}) {
     EditorState.tabSize.of(4),
     python(),
     EditorView.lineWrapping,
+    editableCompartment.of(EditorView.editable.of(currentEditable)),
     themeCompartment.of(themeExtensions(currentTheme)),
     placeholderCompartment.of(placeholder(currentPlaceholder)),
     customKeymap,
@@ -467,6 +470,24 @@ export function create(parent, options = {}) {
     moveLineStart: () => cursorLineStart(view),
     moveLineEnd: () => cursorLineEnd(view),
     getContentDOM: () => view.contentDOM,
+    setEditable: (editable) => {
+      currentEditable = Boolean(editable);
+      view.dispatch({
+        effects: editableCompartment.reconfigure(EditorView.editable.of(currentEditable)),
+      });
+      if (!currentEditable) view.contentDOM.blur();
+    },
+    setCursorFromPoint: (x, y) => {
+      let position = null;
+      try {
+        position = view.posAtCoords({ x, y });
+      } catch (_) {
+        position = null;
+      }
+      if (position === null) return false;
+      view.dispatch({ selection: { anchor: position } });
+      return true;
+    },
     setCursorEnd: () => {
       view.dispatch({ selection: { anchor: view.state.doc.length } });
     },

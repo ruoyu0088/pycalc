@@ -104,6 +104,17 @@
   flex: 0.72 1 0;
 }
 
+/* iOS read-only editor: CodeMirror normally hides the caret when unfocused. */
+
+body.mobile-keyboard-ios .cm-cursor {
+  display: block !important;
+  animation: mk-caret-blink 1.05s steps(1) infinite;
+}
+
+@keyframes mk-caret-blink {
+  50% { opacity: 0; }
+}
+
 /* shared keys */
 
 .mk-key {
@@ -153,11 +164,12 @@
   background: rgba(0, 0, 0, 0.35);
   opacity: 0;
   transition: opacity 0.18s ease;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .mk-drawer-backdrop.open {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .mk-drawer-backdrop.hidden {
