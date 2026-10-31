@@ -20,6 +20,7 @@
     drawerOpen: false,
     drawerId: null,
     drawerTimer: null,
+    libraryTab: null,
     initialized: false,
   };
 
@@ -64,6 +65,7 @@
         <span class="mk-drawer-title" id="mk-drawer-title"></span>
         <div role="button" tabindex="-1" class="mk-drawer-close" id="mk-drawer-close">×</div>
       </div>
+      <div class="mk-lib-tabs hidden" id="mk-lib-tabs"></div>
       <div class="mk-drawer-list" id="mk-drawer-list"></div>
     `;
     document.body.appendChild(drawer);
@@ -403,21 +405,180 @@
     return { label: String(item), value: String(item), title: '' };
   }
 
+  function notify(key) {
+    if (state.callbacks.notify) state.callbacks.notify(key);
+  }
+
+  function selectedLibraries() {
+    const read = state.callbacks.getSelectedLibraries || state.callbacks.getLibraries;
+    let libraries = read ? read() : [];
+    if (!Array.isArray(libraries)) libraries = [];
+    return libraries.filter((library) => library && library.id);
+  }
+
+  function libraryAlias(library) {
+    return library.alias || library.label || library.id;
+  }
+
+  function classifyContext(before, alias) {
+    const text = String(before || '');
+    if (/[A-Za-z_]\w*\.$/.test(text)) {
+      const token = /([A-Za-z_]\w*)\.$/.exec(text)[1];
+      return token === alias ? 'aliasDot' : 'dot';
+    }
+    if (text.endsWith('.')) return 'dot';
+    const identifier = /([A-Za-z_]\w*)$/.exec(text);
+    if (identifier) return identifier[1] === alias ? 'alias' : 'identifier';
+    if (/[)\]]$/.test(text)) return 'objectExpr';
+    return 'other';
+  }
+
+  /**
+   * Resolve the compact ? / ?. / . button notation.
+   *
+   *   ?name   library member
+   *   ?.name  library member or member of the current object
+   *   .name   member that only exists on objects
+   *
+   * A trailing "(" or "[" is preserved as an opening suffix; it never takes
+   * part in the name/dot decisions.
+   */
+  function resolveMarkedInsert(raw, alias, before) {
+    const source = String(raw == null ? '' : raw);
+    if (!source.startsWith('?') && !source.startsWith('.')) return source;
+
+    let mode;
+    let body;
+    if (source.startsWith('?.')) {
+      mode = 'shared';
+      body = source.slice(2);
+    } else if (source.startsWith('?')) {
+      mode = 'library';
+      body = source.slice(1);
+    } else {
+      mode = 'object';
+      body = source.slice(1);
+    }
+
+    let suffix = '';
+    if (body.endsWith('(') || body.endsWith('[')) {
+      suffix = body.slice(-1);
+      body = body.slice(0, -1);
+    }
+
+    const prefixText = before === undefined
+      ? (state.callbacks.getTextBeforeCursor ? String(state.callbacks.getTextBeforeCursor() || '') : '')
+      : String(before || '');
+    const context = classifyContext(prefixText, alias);
+
+    let prefix;
+    if (mode === 'library') {
+      if (context === 'aliasDot') prefix = '';
+      else if (context === 'alias') prefix = '.';
+      else prefix = `${alias}.`;
+    } else if (mode === 'shared') {
+      if (context === 'aliasDot' || context === 'dot') prefix = '';
+      else if (context === 'alias' || context === 'identifier' || context === 'objectExpr') prefix = '.';
+      else prefix = `${alias}.`;
+    } else {
+      if (context === 'dot') prefix = '';
+      else if (context === 'identifier' || context === 'objectExpr') prefix = '.';
+      else return null;
+    }
+    return prefix + body + suffix;
+  }
+
+  function renderLibraryTabs(libraries, activeId) {
+    const host = document.getElementById('mk-lib-tabs');
+    if (!host) return;
+    host.innerHTML = '';
+    host.classList.toggle('hidden', libraries.length === 0);
+    for (const library of libraries) {
+      const button = document.createElement('div');
+      button.setAttribute('role', 'button');
+      button.setAttribute('tabindex', '-1');
+      button.className = 'mk-lib-tab' + (library.id === activeId ? ' active' : '');
+      button.textContent = libraryAlias(library);
+      bindPress(button, () => {
+        if (state.libraryTab === library.id) return;
+        state.libraryTab = library.id;
+        renderDrawerContent('libraries');
+      });
+      host.appendChild(button);
+    }
+  }
+
+  function emptyDrawer(list, key) {
+    const empty = document.createElement('div');
+    empty.className = 'mk-drawer-empty';
+    empty.textContent = t(key);
+    list.appendChild(empty);
+  }
+
+  function renderLibraryDrawer(def) {
+    const list = document.getElementById('mk-drawer-list');
+    if (!list) return;
+    list.innerHTML = '';
+
+    const libraries = selectedLibraries();
+    if (!libraries.length) {
+      renderLibraryTabs([], null);
+      emptyDrawer(list, def.emptyKey || 'keyboard.empty.libraryTabs');
+      return;
+    }
+
+    let active = libraries.find((library) => library.id === state.libraryTab);
+    if (!active) active = libraries[0];
+    state.libraryTab = active.id;
+    renderLibraryTabs(libraries, active.id);
+
+    const alias = libraryAlias(active);
+    const quick = state.layout.library_quick && state.layout.library_quick[active.id];
+    const items = Array.isArray(quick) ? quick : [];
+    if (!items.length) {
+      emptyDrawer(list, def.emptyQuickKey || 'keyboard.empty.libraryQuick');
+      return;
+    }
+
+    for (const item of items) {
+      const button = document.createElement('div');
+      button.setAttribute('role', 'button');
+      button.setAttribute('tabindex', '-1');
+      button.className = 'mk-drawer-item';
+      button.textContent = item.label;
+      button.title = item.insert;
+      bindPress(button, () => {
+        const text = resolveMarkedInsert(item.insert, alias);
+        if (text === null) {
+          notify('keyboard.needObject');
+          return;
+        }
+        insertText(text);
+        closeDrawer();
+      });
+      list.appendChild(button);
+    }
+  }
+
   function renderDrawerContent(drawerId) {
     const def = state.layout.drawers && state.layout.drawers[drawerId];
     if (!def) return;
     const title = document.getElementById('mk-drawer-title');
     const list = document.getElementById('mk-drawer-list');
+    const tabs = document.getElementById('mk-lib-tabs');
     if (!title || !list) return;
     title.textContent = t(def.titleKey);
     list.innerHTML = '';
 
+    if (def.tabs) {
+      renderLibraryDrawer(def);
+      return;
+    }
+    if (tabs) tabs.classList.add('hidden');
+
     const items = drawerItems(def);
     if (!items.length) {
-      const empty = document.createElement('div');
-      empty.className = 'mk-drawer-empty';
-      empty.textContent = t(def.emptyKey || 'keyboard.empty.generic');
-      list.appendChild(empty);
+      emptyDrawer(list, def.emptyKey || 'keyboard.empty.generic');
       return;
     }
 
@@ -508,6 +669,8 @@
       closeDrawer,
       isCoarse: () => Boolean(COARSE && COARSE.matches),
       activeTab: () => state.activeTab,
+      libraryTab: () => state.libraryTab,
+      resolveInsert: (raw, alias, before) => resolveMarkedInsert(raw, alias, before),
     };
     window.__pycalcKeyboard = api;
     return api;

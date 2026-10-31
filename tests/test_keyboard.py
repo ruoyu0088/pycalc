@@ -58,13 +58,51 @@ class KeyboardLayoutTests(unittest.TestCase):
     def test_drawers_and_math(self):
         drawers = LAYOUT["drawers"]
         self.assertEqual(set(drawers), {"variables", "functions", "libraries", "math"})
-        self.assertEqual(drawers["libraries"]["displayField"], "alias")
+        self.assertTrue(drawers["libraries"]["tabs"])
         self.assertEqual(drawers["functions"]["suffix"], "(")
         math = drawers["math"]["items"]
         self.assertEqual(len(math), 26)
         self.assertEqual(len({item["label"] for item in math}), 26)
         self.assertTrue(any(item["label"] == "sin" and item["insert"] == "sin(" for item in math))
         self.assertTrue(any(item["label"] == "pi" and item["insert"] == "pi" for item in math))
+
+    def test_library_quick(self):
+        quick = LAYOUT["library_quick"]
+        for library in (
+            "numpy", "numpy.linalg", "sympy", "matplotlib.pyplot", "pandas", "polars",
+        ):
+            self.assertIn(library, quick)
+            self.assertTrue(quick[library])
+            for item in quick[library]:
+                self.assertNotIn("?", item["label"])
+                self.assertNotIn("(", item["label"])
+                self.assertNotIn("[", item["label"])
+                self.assertFalse(item["label"].startswith("."))
+                raw = item["insert"]
+                if raw.startswith("?."):
+                    body = raw[2:]
+                elif raw.startswith("?"):
+                    body = raw[1:]
+                elif raw.startswith("."):
+                    body = raw[1:]
+                else:
+                    body = raw
+                self.assertTrue(body, item)
+                self.assertFalse(body.startswith("."), item)
+                if body.endswith("("):
+                    body = body[:-1]
+                elif body.endswith("["):
+                    body = body[:-1]
+                self.assertTrue(body, item)
+        self.assertIn(
+            {"label": "tolist", "insert": ".tolist("}, quick["numpy"]
+        )
+        self.assertIn(
+            {"label": "group_by", "insert": ".group_by("}, quick["polars"]
+        )
+        self.assertIn(
+            {"label": "loc", "insert": ".loc["}, quick["pandas"]
+        )
 
     def test_layout_is_json_serializable(self):
         encoded = json.dumps(LAYOUT, ensure_ascii=False)

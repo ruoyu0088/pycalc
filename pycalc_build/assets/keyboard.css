@@ -216,6 +216,50 @@ body.mobile-keyboard-ios .cm-cursor {
   color: var(--text);
 }
 
+.mk-lib-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  touch-action: pan-x;
+}
+
+.mk-lib-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.mk-lib-tabs.hidden {
+  display: none;
+}
+
+.mk-lib-tab {
+  flex: 0 0 auto;
+  padding: 5px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: pan-x;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mk-lib-tab.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.mk-lib-tab.pressed {
+  background: var(--accent-soft);
+}
+
 .mk-drawer-close {
   width: 32px;
   height: 32px;
@@ -257,7 +301,7 @@ body.mobile-keyboard-ios .cm-cursor {
   font-family: var(--mono);
   font-size: 14px;
   cursor: pointer;
-  touch-action: none;
+  touch-action: pan-y;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }

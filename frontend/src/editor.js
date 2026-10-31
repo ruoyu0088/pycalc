@@ -470,6 +470,11 @@ export function create(parent, options = {}) {
     moveLineStart: () => cursorLineStart(view),
     moveLineEnd: () => cursorLineEnd(view),
     getContentDOM: () => view.contentDOM,
+    getTextBeforeCursor: () => {
+      const from = view.state.selection.main.from;
+      const line = view.state.doc.lineAt(from);
+      return view.state.sliceDoc(line.from, from);
+    },
     setEditable: (editable) => {
       currentEditable = Boolean(editable);
       view.dispatch({

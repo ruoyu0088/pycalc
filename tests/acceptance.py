@@ -98,7 +98,7 @@ def run_and_check(browser: Browser, code: str, expected_stdout: str) -> None:
 
 
 MOBILE_TAP_JS = """(label) => {
-  const selector = '.mk-key,.mk-tab,.mk-drawer-item,.mk-drawer-close';
+  const selector = '.mk-key,.mk-tab,.mk-lib-tab,.mk-drawer-item,.mk-drawer-close';
   const element = [...document.querySelectorAll(selector)]
     .find((item) => item.textContent === label);
   if (!element) throw new Error('no keyboard key ' + label);
@@ -121,7 +121,7 @@ def tap_keyboard(browser: Browser, label: str) -> None:
 def touch_keyboard(browser: Browser, label: str) -> None:
     rect = browser.eval(
         "(() => {"
-        f" const element = [...document.querySelectorAll('.mk-key,.mk-tab')]"
+        f" const element = [...document.querySelectorAll('.mk-key,.mk-tab,.mk-lib-tab')]"
         f"   .find((item) => item.textContent === {json.dumps(label)});"
         " if (!element) throw new Error('no keyboard key');"
         " const r = element.getBoundingClientRect();"
@@ -178,14 +178,77 @@ def test_mobile_keyboard() -> None:
         assert browser.eval("document.activeElement.classList.contains('cm-content')") is True
         assert browser.eval("getComputedStyle(document.querySelector('.cm-cursor')).display") != "none"
 
+        browser.eval("window.__pycalc.setEditorText('')")
+        tap_keyboard(browser, "库")
+        time.sleep(0.2)
+        assert browser.eval("document.querySelectorAll('.mk-lib-tab').length") == 0
+        assert "请先勾选扩展库" in browser.eval(
+            "document.getElementById('mk-drawer-list').textContent"
+        )
+        tap_keyboard(browser, "×")
+        time.sleep(0.3)
+
+        resolve = lambda raw, alias, before: browser.eval(
+            "window.__pycalcKeyboard.resolveInsert("
+            f"{json.dumps(raw)}, {json.dumps(alias)}, {json.dumps(before)})"
+        )
+        assert resolve("?arange(", "np", "") == "np.arange("
+        assert resolve("?arange(", "np", "np") == ".arange("
+        assert resolve("?arange(", "np", "np.") == "arange("
+        assert resolve("?arange(", "np", "x") == "np.arange("
+        assert resolve("?.sum(", "np", "np") == ".sum("
+        assert resolve("?.sum(", "np", "np.") == "sum("
+        assert resolve("?.sum(", "np", "x") == ".sum("
+        assert resolve("?.sum(", "np", "x.") == "sum("
+        assert resolve("?.sum(", "np", "+") == "np.sum("
+        assert resolve("?.sum(", "np", "") == "np.sum("
+        assert resolve(".tolist(", "np", "x") == ".tolist("
+        assert resolve(".tolist(", "np", "x.") == "tolist("
+        assert resolve(".tolist(", "np", "np") is None
+        assert resolve(".tolist(", "np", "") is None
+        assert resolve(".dtype", "np", "x") == ".dtype"
+        assert resolve(".dtype", "np", "x.") == "dtype"
+        assert resolve(".T", "np", "x") == ".T"
+        assert resolve("?linalg.norm(", "np", "np") == ".linalg.norm("
+        assert resolve("?.loc[", "pd", "df") == ".loc["
+        assert resolve("?.loc[", "pd", "df.") == "loc["
+        assert resolve("np", "np", "") == "np"
+
+        browser.eval("window.__pycalc.selectLibraries(['numpy', 'matplotlib.pyplot'])")
+        time.sleep(0.2)
+        browser.eval("window.__pycalc.setEditorText('')")
         tap_keyboard(browser, "库")
         time.sleep(0.2)
         assert browser.eval(
+            "[...document.querySelectorAll('.mk-lib-tab')].map(x => x.textContent)"
+        ) == ["np", "plt"]
+        labels = browser.eval(
             "[...document.querySelectorAll('.mk-drawer-item')].map(x => x.textContent)"
-        ) == ["np", "sp", "plt"]
+        )
+        assert "arange" in labels, labels
+        assert not any(
+            label.startswith(("?", ".")) or "(" in label or "[" in label
+            for label in labels
+        ), labels
+        tap_keyboard(browser, "plt")
+        assert "plot" in browser.eval(
+            "[...document.querySelectorAll('.mk-drawer-item')].map(x => x.textContent)"
+        )
         tap_keyboard(browser, "np")
-        assert browser.eval("window.__pycalc.getEditorValue()") == "np"
+        tap_keyboard(browser, "arange")
+        assert browser.eval("window.__pycalc.getEditorValue()") == "np.arange("
         assert browser.eval("!document.getElementById('mk-drawer').classList.contains('open')") is True
+
+        browser.eval("window.__pycalc.setEditorText('np')")
+        tap_keyboard(browser, "库")
+        time.sleep(0.2)
+        tap_keyboard(browser, "tolist")
+        time.sleep(0.2)
+        assert browser.eval("window.__pycalc.getEditorValue()") == "np"
+        assert "先输入对象名" in browser.eval("document.getElementById('toast').textContent")
+        assert browser.eval("document.getElementById('mk-drawer').classList.contains('open')") is True
+        tap_keyboard(browser, "×")
+        time.sleep(0.3)
 
         # A real touch (not just a synthetic PointerEvent) must not be
         # swallowed by the backdrop's synthetic click after pointerup.

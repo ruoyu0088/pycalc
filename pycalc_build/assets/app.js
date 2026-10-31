@@ -1242,6 +1242,7 @@ del _pycalc_glue_source
       try { py.setPlotTheme(state.ui.theme); } catch (err) { console.warn('plot theme failed', err); }
     }
     refreshInspector();
+    if (mobileKeyboard && mobileKeyboard.refresh) mobileKeyboard.refresh();
     queueSave({ snapshot: false });
   }
 
@@ -1920,6 +1921,12 @@ del _pycalc_glue_source
         try { return py ? JSON.parse(py.listFuncs()) : []; } catch (_) { return []; }
       },
       getLibraries: () => AVAILABLE_LIBS,
+      getSelectedLibraries: () => {
+        const byId = new Map(AVAILABLE_LIBS.map((lib) => [lib.id, lib]));
+        return state.libraries.map((id) => byId.get(id)).filter(Boolean);
+      },
+      getTextBeforeCursor: () => editor.getTextBeforeCursor && editor.getTextBeforeCursor(),
+      notify: (key) => toast(key),
       undo: () => editor.undo && editor.undo(),
       backspace: () => editor.deleteCharBefore && editor.deleteCharBefore(),
       tab: () => editor.insertTab && editor.insertTab(),
@@ -2042,6 +2049,7 @@ del _pycalc_glue_source
         moveLineStart: () => cm.moveLineStart(),
         moveLineEnd: () => cm.moveLineEnd(),
         getContentDOM: () => cm.getContentDOM(),
+        getTextBeforeCursor: () => cm.getTextBeforeCursor(),
         setEditable: (editable) => cm.setEditable(editable),
         setCursorFromPoint: (x, y) => cm.setCursorFromPoint(x, y),
         setCursorEnd: () => cm.setCursorEnd(),
@@ -2238,6 +2246,7 @@ del _pycalc_glue_source
       renderLibraryBar();
       applyLibraries(true);
       refreshInspector();
+      if (mobileKeyboard && mobileKeyboard.refresh) mobileKeyboard.refresh();
       await queueSave({ snapshot: false });
       return [...state.libraries];
     },
