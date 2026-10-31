@@ -1920,6 +1920,12 @@ del _pycalc_glue_source
       tab: () => editor.insertTab && editor.insertTab(),
       newline: () => editor.insertNewline && editor.insertNewline(),
       clear: () => setEditorText('', true),
+      triggerAutocomplete: () => {
+        if (editor && editor.triggerAutocomplete) editor.triggerAutocomplete();
+      },
+      triggerSignature: () => {
+        if (editor && editor.triggerSignature) editor.triggerSignature();
+      },      
       moveCursor: (direction) => editor.moveCursor && editor.moveCursor(direction),
       moveLineStart: () => editor.moveLineStart && editor.moveLineStart(),
       moveLineEnd: () => editor.moveLineEnd && editor.moveLineEnd(),
@@ -2054,6 +2060,8 @@ del _pycalc_glue_source
         setPlaceholder: (text) => cm.setPlaceholder(text),
         reset: (value) => cm.reset(value),
         focus: () => cm.focus(),
+        triggerAutocomplete: () => cm.triggerAutocomplete(),
+        triggerSignature: () => cm.triggerSignature(),        
       };
     }
 
@@ -2115,6 +2123,8 @@ del _pycalc_glue_source
         try { state.draft = textarea.value; } finally { state.suppressEditorSave = false; }
       },
       focus: () => textarea.focus(),
+      triggerAutocomplete: () => {},
+      triggerSignature: () => {},      
     };
   }
 

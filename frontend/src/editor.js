@@ -14,6 +14,7 @@ import {
   closeBracketsKeymap,
   completionKeymap,
   completionStatus,
+  startCompletion,
 } from '@codemirror/autocomplete';
 import {
   cursorCharLeft,
@@ -236,7 +237,7 @@ function typeHint(getAttributes, onTypeHint) {
   );
 }
 
-function signatureHelp(getSignature) {
+function signatureHelp(getSignature, registerController) {
   return ViewPlugin.fromClass(
     class {
       constructor(view) {
@@ -250,6 +251,7 @@ function signatureHelp(getSignature) {
         view.scrollDOM.addEventListener('scroll', this.onScroll);
         view.dom.addEventListener('blur', this.onBlur);
         window.addEventListener('resize', this.onScroll);
+        if (registerController) registerController(this);
       }
 
       update(update) {
@@ -280,6 +282,10 @@ function signatureHelp(getSignature) {
         // updating; defer the positioning to the next task.
         this.schedulePosition();
       }
+
+      trigger() {
+        this.update({ state: this.view.state });
+      }      
 
       schedulePosition() {
         if (this.positionTimer !== null) clearTimeout(this.positionTimer);
@@ -398,6 +404,7 @@ export function create(parent, options = {}) {
     ])
   );
 
+  let signatureController = null;
   const buildExtensions = () => [
     lineNumbers(),
     history(),
@@ -413,7 +420,7 @@ export function create(parent, options = {}) {
       maxRenderedOptions: 80,
     }),
     typeHint(getAttributes, onTypeHint),
-    signatureHelp(getSignature),
+    signatureHelp(getSignature, (controller) => { signatureController = controller; }),
     indentUnit.of('    '),
     EditorState.tabSize.of(4),
     python(),
@@ -512,5 +519,15 @@ export function create(parent, options = {}) {
     },
     focus: () => view.focus(),
     destroy: () => view.destroy(),
+    
+    triggerAutocomplete: () => {
+      view.focus();
+      startCompletion(view);
+    },
+    
+    triggerSignature: () => {
+      view.focus();
+      if (signatureController) signatureController.trigger();
+    },
   };
 }

@@ -212,6 +212,8 @@ EN: dict[str, str] = {
     "keyboard.key.clearInput": "Clear",
     "keyboard.hide": "Hide keyboard",
     "keyboard.show": "Show keyboard",
+    "keyboard.key.autocomplete": "Comp",
+    "keyboard.key.signature": "Sig",
 }
 
 ZH: dict[str, str] = {
@@ -402,6 +404,8 @@ ZH: dict[str, str] = {
     "keyboard.key.clearInput": "清空",
     "keyboard.hide": "收起键盘",
     "keyboard.show": "展开键盘",
+    "keyboard.key.autocomplete": "补全",
+    "keyboard.key.signature": "提示",    
 }
 
 JA: dict[str, str] = {
@@ -592,6 +596,8 @@ JA: dict[str, str] = {
     "keyboard.key.clearInput": "クリア",
     "keyboard.hide": "キーボードを隠す",
     "keyboard.show": "キーボードを表示",
+    "keyboard.key.autocomplete": "補完",
+    "keyboard.key.signature": "引数",
 }
 
 MESSAGES: dict[str, dict[str, str]] = {"en": EN, "zh": ZH, "ja": JA}

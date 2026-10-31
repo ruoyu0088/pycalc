@@ -153,6 +153,28 @@
       host.appendChild(button);
     }
 
+    const autocompleteTab = document.createElement('div');
+    autocompleteTab.setAttribute('role', 'button');
+    autocompleteTab.setAttribute('tabindex', '-1');
+    autocompleteTab.className = 'mk-tab mk-autocomplete-tab';
+    autocompleteTab.textContent = t('keyboard.key.autocomplete');
+    autocompleteTab.setAttribute('aria-label', autocompleteTab.textContent);
+    bindPress(autocompleteTab, () => {
+      if (state.callbacks.triggerAutocomplete) state.callbacks.triggerAutocomplete();
+    });
+    host.appendChild(autocompleteTab);
+
+    const signatureTab = document.createElement('div');
+    signatureTab.setAttribute('role', 'button');
+    signatureTab.setAttribute('tabindex', '-1');
+    signatureTab.className = 'mk-tab mk-signature-tab';
+    signatureTab.textContent = t('keyboard.key.signature');
+    signatureTab.setAttribute('aria-label', signatureTab.textContent);
+    bindPress(signatureTab, () => {
+      if (state.callbacks.triggerSignature) state.callbacks.triggerSignature();
+    });
+    // host.appendChild(signatureTab);
+
     const clear = document.createElement('div');
     clear.setAttribute('role', 'button');
     clear.setAttribute('tabindex', '-1');
