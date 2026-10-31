@@ -52,7 +52,7 @@ LAYOUT = {
                         {"label": "⌫", "action": "backspace"},
                     ],
                     [
-                        {"label": "%", "insert": "%"},
+                        {"label": ":", "insert": ":"},
                         {"label": "7", "insert": "7"},
                         {"label": "8", "insert": "8"},
                         {"label": "9", "insert": "9"},
@@ -80,7 +80,8 @@ LAYOUT = {
                         {"label": "[", "insert": "["},
                         {"label": "]", "insert": "]"},
                         {"label": "0", "insert": "0"},
-                        {"label": "=", "action": "run", "style": "run", "span": 2},
+                        {"label": "⏎", "insert": "\n"},
+                        {"label": "=", "action": "run", "style": "run"},
                     ],
                 ],
             },
