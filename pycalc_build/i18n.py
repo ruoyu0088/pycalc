@@ -21,6 +21,8 @@ EN: dict[str, str] = {
     "session.new": "New",
     "session.rename": "Rename",
     "session.delete": "Delete",
+    "session.hideBar": "Hide session bar",
+    "session.showBar": "Show session bar",
     "session.clear": "Clear current session",
     "session.clearConfirm": "Clear session “{name}”? Its history, variables and functions will be removed; the session name and library choices stay.",
     "session.cleared": "Session cleared.",
@@ -208,6 +210,8 @@ EN: dict[str, str] = {
     "keyboard.key.undo": "Undo",
     "keyboard.key.clear": "Clear",
     "keyboard.key.clearInput": "Clear",
+    "keyboard.hide": "Hide keyboard",
+    "keyboard.show": "Show keyboard",
 }
 
 ZH: dict[str, str] = {
@@ -216,6 +220,8 @@ ZH: dict[str, str] = {
     "session.new": "新建",
     "session.rename": "重命名",
     "session.delete": "删除",
+    "session.hideBar": "隐藏会话栏",
+    "session.showBar": "显示会话栏",
     "session.clear": "清空当前会话",
     "session.clearConfirm": "清空会话「{name}」？它的历史、变量和函数会被移除；会话名称和库选择保留。",
     "session.cleared": "当前会话已清空。",
@@ -394,6 +400,8 @@ ZH: dict[str, str] = {
     "keyboard.key.undo": "撤销",
     "keyboard.key.clear": "清除",
     "keyboard.key.clearInput": "清空",
+    "keyboard.hide": "收起键盘",
+    "keyboard.show": "展开键盘",
 }
 
 JA: dict[str, str] = {
@@ -402,6 +410,8 @@ JA: dict[str, str] = {
     "session.new": "新規",
     "session.rename": "名前を変更",
     "session.delete": "削除",
+    "session.hideBar": "セッションバーを隠す",
+    "session.showBar": "セッションバーを表示",
     "session.clear": "現在のセッションをクリア",
     "session.clearConfirm": "セッション「{name}」をクリアしますか？履歴・変数・関数が削除されます。セッション名とライブラリ選択は残ります。",
     "session.cleared": "現在のセッションをクリアしました。",
@@ -580,6 +590,8 @@ JA: dict[str, str] = {
     "keyboard.key.undo": "元に戻す",
     "keyboard.key.clear": "クリア",
     "keyboard.key.clearInput": "クリア",
+    "keyboard.hide": "キーボードを隠す",
+    "keyboard.show": "キーボードを表示",
 }
 
 MESSAGES: dict[str, dict[str, str]] = {"en": EN, "zh": ZH, "ja": JA}

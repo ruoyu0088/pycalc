@@ -840,3 +840,11 @@ pre.error {
 body.mobile-keyboard-active .composer-actions {
   display: none !important;
 }
+
+@media (min-width: 881px) {
+  .mobile-only { display: none !important; }
+}
+
+@media (max-width: 880px) {
+  body.session-bar-hidden .session-bar { display: none; }
+}

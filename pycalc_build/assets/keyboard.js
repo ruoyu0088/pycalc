@@ -17,6 +17,7 @@
     activeTab: null,
     currentView: 'letters',
     uppercase: false,
+    collapsed: false,
     drawerOpen: false,
     drawerId: null,
     drawerTimer: null,
@@ -141,6 +142,7 @@
       button.dataset.tab = tab.id;
       bindPress(button, () => {
         if (state.drawerOpen) closeDrawer();
+        if (state.collapsed) setCollapsed(false);
         if (tab.id === state.activeTab) return;
         state.activeTab = tab.id;
         state.currentView = 'letters';
@@ -161,6 +163,34 @@
       if (state.callbacks.clear) state.callbacks.clear();
     });
     host.appendChild(clear);
+
+    const collapse = document.createElement('div');
+    collapse.setAttribute('role', 'button');
+    collapse.setAttribute('tabindex', '-1');
+    collapse.className = 'mk-tab mk-collapse-tab';
+    collapse.textContent = state.collapsed ? '⌃' : '⌄';
+    collapse.setAttribute(
+      'aria-label',
+      t(state.collapsed ? 'keyboard.show' : 'keyboard.hide')
+    );
+    collapse.setAttribute('aria-expanded', String(!state.collapsed));
+    collapse.title = t(state.collapsed ? 'keyboard.show' : 'keyboard.hide');
+    bindPress(collapse, () => setCollapsed(!state.collapsed));
+    host.appendChild(collapse);
+  }
+
+  function setCollapsed(value) {
+    state.collapsed = Boolean(value);
+    const keyboard = document.querySelector('.mobile-keyboard');
+    const panel = document.getElementById('mk-panel');
+    if (keyboard) keyboard.classList.toggle('collapsed', state.collapsed);
+    if (panel) panel.classList.toggle('hidden', state.collapsed);
+    const button = document.querySelector('.mk-collapse-tab');
+    if (!button) return;
+    button.textContent = state.collapsed ? '⌃' : '⌄';
+    button.title = t(state.collapsed ? 'keyboard.show' : 'keyboard.hide');
+    button.setAttribute('aria-label', button.title);
+    button.setAttribute('aria-expanded', String(!state.collapsed));
   }
 
   function activeTab() {

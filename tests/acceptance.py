@@ -173,16 +173,55 @@ def test_mobile_keyboard() -> None:
         )
         assert browser.eval("!!document.querySelector('.mobile-keyboard')") is True
         assert browser.eval("document.body.classList.contains('mobile-keyboard-active')") is True
-        assert browser.eval("document.querySelectorAll('.mk-tab').length") == 3
+        assert browser.eval("document.querySelectorAll('.mk-tab').length") == 4
         assert browser.eval("[...document.querySelectorAll('.mk-tab')].map(x => x.textContent)") == [
-            "计算", "英文", "清空",
+            "计算", "英文", "清空", "⌄",
         ]
+
+        assert browser.eval(
+            "getComputedStyle(document.getElementById('session-bar-toggle')).display"
+        ) != "none"
+        top_before = browser.eval("document.querySelector('.topbar').getBoundingClientRect().height")
+        work_before = browser.eval(
+            "document.querySelector('.workspace').getBoundingClientRect().height"
+        )
+        browser.eval("document.getElementById('session-bar-toggle').click()")
+        time.sleep(0.2)
+        assert browser.eval("document.body.classList.contains('session-bar-hidden')") is True
+        assert browser.eval("getComputedStyle(document.querySelector('.session-bar')).display") == "none"
+        top_after = browser.eval("document.querySelector('.topbar').getBoundingClientRect().height")
+        work_after = browser.eval(
+            "document.querySelector('.workspace').getBoundingClientRect().height"
+        )
+        assert top_after < top_before, (top_before, top_after)
+        assert work_after > work_before, (work_before, work_after)
+        browser.eval("document.getElementById('session-bar-toggle').click()")
+        time.sleep(0.2)
+        assert browser.eval("getComputedStyle(document.querySelector('.session-bar')).display") != "none"
         assert browser.eval(
             "getComputedStyle(document.querySelector('.composer-actions')).display"
         ) == "none"
         assert browser.eval("document.querySelector('.cm-content').getAttribute('inputmode')") == "none"
         height = browser.eval("document.querySelector('.mobile-keyboard').getBoundingClientRect().height")
         assert 220 <= height <= 330, height
+
+        work_expanded = browser.eval(
+            "document.querySelector('.workspace').getBoundingClientRect().height"
+        )
+        tap_keyboard(browser, "⌄")
+        time.sleep(0.2)
+        assert browser.eval("getComputedStyle(document.querySelector('.mk-panel')).display") == "none"
+        assert browser.eval(
+            "document.querySelector('.mobile-keyboard').getBoundingClientRect().height"
+        ) < 80
+        assert browser.eval(
+            "document.querySelector('.workspace').getBoundingClientRect().height"
+        ) > work_expanded
+        tap_keyboard(browser, "英文")
+        time.sleep(0.2)
+        assert browser.eval("getComputedStyle(document.querySelector('.mk-panel')).display") != "none"
+        assert browser.eval("document.querySelector('.mk-tab.active').textContent") == "英文"
+        tap_keyboard(browser, "计算")
 
         for label in ["(", "1", "+", "2", ")", "*", "3"]:
             tap_keyboard(browser, label)
@@ -312,7 +351,7 @@ def test_mobile_keyboard() -> None:
         browser.eval("window.__pycalc.setLanguage('en')")
         time.sleep(0.2)
         assert browser.eval("[...document.querySelectorAll('.mk-tab')].map(x => x.textContent)") == [
-            "Calc", "English", "Clear",
+            "Calc", "English", "Clear", "⌄",
         ]
         browser.eval("window.__pycalc.setLanguage('zh')")
         time.sleep(0.2)
@@ -328,6 +367,10 @@ def test_mobile_keyboard() -> None:
         assert browser.eval(
             "getComputedStyle(document.querySelector('.composer-actions')).display"
         ) != "none"
+        assert browser.eval(
+            "getComputedStyle(document.getElementById('session-bar-toggle')).display"
+        ) == "none"
+        assert browser.eval("getComputedStyle(document.querySelector('.session-bar')).display") != "none"
         assert browser.eval("document.querySelector('.cm-content').getAttribute('inputmode')") is None
     log("  PASS mobile keyboard")
 

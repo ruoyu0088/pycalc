@@ -49,6 +49,24 @@
   color: var(--red);
 }
 
+.mk-collapse-tab {
+  margin-left: auto;
+  padding: 5px 10px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.mk-collapse-tab.pressed {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.mobile-keyboard.collapsed .mk-panel {
+  display: none !important;
+}
+
 .mk-panel {
   padding: 6px;
   min-height: 0;

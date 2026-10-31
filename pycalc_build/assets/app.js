@@ -192,6 +192,7 @@
     sidebarHidden: false,
     sidebarWidth: 292,
     sympyOutput: 'text',
+    sessionBarHidden: false,
   };
 
   const state = {
@@ -677,6 +678,7 @@ del _pycalc_glue_source
       sidebarHidden: Boolean(meta.sidebarHidden),
       sidebarWidth: clampSidebarWidth(meta.sidebarWidth),
       sympyOutput: meta.sympyOutput === 'math' ? 'math' : 'text',
+      sessionBarHidden: Boolean(meta.sessionBarHidden),
     };
   }
 
@@ -691,6 +693,7 @@ del _pycalc_glue_source
         sidebarHidden: state.ui.sidebarHidden,
         sidebarWidth: state.ui.sidebarWidth,
         sympyOutput: state.ui.sympyOutput,
+        sessionBarHidden: state.ui.sessionBarHidden,
       });
     } catch (err) {
       console.warn('could not save UI settings', err);
@@ -1846,6 +1849,18 @@ del _pycalc_glue_source
     applySidebarWidth(state.ui.sidebarWidth);
   }
 
+  function applySessionBar() {
+    const mobile = window.innerWidth <= 880;
+    const hidden = mobile && state.ui.sessionBarHidden;
+    document.body.classList.toggle('session-bar-hidden', hidden);
+    const button = $('session-bar-toggle');
+    if (!button) return;
+    button.textContent = hidden ? '⌄' : '⌃';
+    button.title = I18n.t(hidden ? 'session.showBar' : 'session.hideBar');
+    button.setAttribute('aria-label', button.title);
+    button.setAttribute('aria-expanded', String(!hidden));
+  }
+
   async function setLanguage(lang) {
     state.ui.language = MESSAGES[lang] ? lang : 'en';
     applyLanguageToUi();
@@ -1864,6 +1879,7 @@ del _pycalc_glue_source
     renderRunHint();
     renderStatus();
     updateBusyUi();
+    applySessionBar();
     renderLibraryBar();
     renderSympyControl();
     updateHistoryButtons();
@@ -1933,6 +1949,12 @@ del _pycalc_glue_source
     $('theme-toggle').addEventListener('click', () => {
       applyTheme(state.ui.theme === 'dark' ? 'light' : 'dark');
     });
+    $('session-bar-toggle').addEventListener('click', () => {
+      if (window.innerWidth > 880) return;
+      state.ui.sessionBarHidden = !state.ui.sessionBarHidden;
+      applySessionBar();
+      saveUiMeta();
+    });
     $('sidebar-toggle').addEventListener('click', () => {
       if (window.innerWidth <= 880) {
         state.mobileSidebarOpen = !state.mobileSidebarOpen;
@@ -1943,6 +1965,7 @@ del _pycalc_glue_source
       applySidebar();
     });
     window.addEventListener('resize', applySidebar);
+    window.addEventListener('resize', applySessionBar);
 
     const resizer = $('sidebar-resizer');
     let resizing = false;
@@ -2116,6 +2139,7 @@ del _pycalc_glue_source
     $('theme-toggle').textContent = state.ui.theme === 'dark' ? '☀' : '☾';
     window.__pycalcRunKeyMode = state.ui.runKey;
     applySidebar();
+    applySessionBar();
 
     editor = createEditor();
     applyLanguageToUi();
