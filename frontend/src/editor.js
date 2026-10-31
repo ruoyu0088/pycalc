@@ -462,6 +462,7 @@ export function create(parent, options = {}) {
         view.dispatch(view.state.replaceSelection('    '));
       }
     },
+    insertNewline: () => insertNewlineAndIndent(view),
     undo: () => undo(view),
     deleteCharBefore: () => deleteCharBackward(view),
     moveCursor: (direction) => {

@@ -198,6 +198,10 @@ def test_mobile_keyboard() -> None:
         tap_keyboard(browser, "清空")
         assert browser.eval("window.__pycalc.getEditorValue()") == ""
 
+        browser.eval("window.__pycalc.setEditorText('for i in range(10):')")
+        tap_keyboard(browser, "⏎")
+        assert browser.eval("window.__pycalc.getEditorValue()") == "for i in range(10):\n    "
+
         browser.eval("window.__pycalc.setEditorText('')")
         tap_keyboard(browser, "库")
         time.sleep(0.2)
@@ -366,6 +370,7 @@ def test_ios_keyboard() -> None:
         left_before = browser.eval("parseFloat(document.querySelector('.cm-cursor').style.left)")
         for label in ["1", "2", "3"]:
             tap_keyboard(browser, label)
+        time.sleep(0.2)
         assert browser.eval("window.__pycalc.getEditorValue()") == "123"
         left_after = browser.eval("parseFloat(document.querySelector('.cm-cursor').style.left)")
         assert left_after > left_before, (left_before, left_after)

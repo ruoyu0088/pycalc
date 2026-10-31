@@ -257,9 +257,22 @@
     }
   }
 
+  function insertNewline() {
+    if (state.callbacks.newline) state.callbacks.newline();
+    else insertText('\n');
+    if (state.uppercase) {
+      state.uppercase = false;
+      if (state.activeTab === 'en') renderActiveTab();
+    }
+  }
+
   function handleKeyPress(key) {
     if (key.insert !== undefined) {
-      insertKeyText(String(key.insert));
+      if (String(key.insert) === '\n') {
+        insertNewline();
+      } else {
+        insertKeyText(String(key.insert));
+      }
       return;
     }
 
@@ -295,7 +308,7 @@
         insertKeyText(' ');
         break;
       case 'enter':
-        insertKeyText('\n');
+        insertNewline();
         break;
       case 'shift':
         state.uppercase = !state.uppercase;
