@@ -264,6 +264,8 @@
   }
 
   function renderStatus() {
+    $('save-status').textContent = '';
+    return;
     if (!state.status) {
       $('save-status').textContent = '';
       return;

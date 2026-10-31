@@ -81,7 +81,7 @@ button, select, textarea { font: inherit; }
 }
 
 .brand { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
-.brand-name { font-weight: 700; font-size: 18px; letter-spacing: .2px; }
+.brand-name { font-weight: 700; font-size: 12px; letter-spacing: .2px; }
 .brand-sub { color: var(--muted); font-size: 12px; }
 
 .session-bar { display: flex; align-items: center; gap: 5px; min-width: 0; }
