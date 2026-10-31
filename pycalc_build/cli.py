@@ -57,6 +57,11 @@ def _list_libs(version: str, *, offline: bool, refresh: bool, log) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
     args = _parser().parse_args(argv)
     log_stream = sys.stderr if args.json else sys.stdout
 

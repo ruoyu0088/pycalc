@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from .cache import DownloadError, NotFound, OfflineMissing, download
+from .cache import DownloadError, NotFound, OfflineMissing, download, ensure_sha256
 from .config import CACHE_DIR, CDN_TEMPLATE, KNOWN_VERSIONS
 
 _VERSION_RE = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._-]*$")
@@ -185,7 +185,24 @@ def ensure_wheel(
         log=log,
     )
     if sha256:
-        from .cache import ensure_sha256
-
-        ensure_sha256(dest, sha256, log)
+        try:
+            ensure_sha256(dest, sha256, log)
+        except DownloadError:
+            if offline:
+                raise
+            # A corrupt cache entry should not require a manual cleanup.
+            if log:
+                log(f"[重试] {file_name} 的缓存校验失败，删除后重新下载")
+            try:
+                dest.unlink()
+            except OSError:
+                pass
+            download(
+                spec.wheel_url(file_name),
+                dest,
+                offline=False,
+                refresh=True,
+                log=log,
+            )
+            ensure_sha256(dest, sha256, log)
     return dest
