@@ -228,6 +228,7 @@
   let editor = null;
   let pyodide = null;
   let py = null;
+  let mobileKeyboard = null;
 
   // ---------------------------------------------------------------------
   // Small UI helpers
@@ -1895,12 +1896,39 @@ del _pycalc_glue_source
     renderLibraryBar();
     renderSympyControl();
     updateHistoryButtons();
+    if (mobileKeyboard && mobileKeyboard.refresh) mobileKeyboard.refresh();
     renderConsole();
     refreshInspector();
     renderOverlay();
     if (editor && typeof editor.setPlaceholder === 'function') {
       editor.setPlaceholder(I18n.t('editor.placeholder'));
     }
+  }
+
+  function initMobileKeyboardUi() {
+    if (mobileKeyboard || !window.initMobileKeyboard || !editor || !editor.getContentDOM) return;
+    if (!CFG.keyboard) return;
+    mobileKeyboard = window.initMobileKeyboard({
+      layout: CFG.keyboard,
+      t: (key) => I18n.t(key),
+      insert: (text) => editor.insertAtCursor(text, { focus: false }),
+      run: () => runCode(),
+      getVariables: () => {
+        try { return py ? JSON.parse(py.listVars()) : []; } catch (_) { return []; }
+      },
+      getFunctions: () => {
+        try { return py ? JSON.parse(py.listFuncs()) : []; } catch (_) { return []; }
+      },
+      getLibraries: () => AVAILABLE_LIBS,
+      undo: () => editor.undo && editor.undo(),
+      backspace: () => editor.deleteCharBefore && editor.deleteCharBefore(),
+      tab: () => editor.insertTab && editor.insertTab(),
+      clear: () => setEditorText('', true),
+      moveCursor: (direction) => editor.moveCursor && editor.moveCursor(direction),
+      moveLineStart: () => editor.moveLineStart && editor.moveLineStart(),
+      moveLineEnd: () => editor.moveLineEnd && editor.moveLineEnd(),
+      getEditorContentDOM: () => editor.getContentDOM && editor.getContentDOM(),
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -2004,7 +2032,14 @@ del _pycalc_glue_source
         isCodeMirror: true,
         getValue: () => cm.getValue(),
         setValue: (value) => cm.setValue(value),
-        insertAtCursor: (text) => cm.insertAtCursor(text),
+        insertAtCursor: (text, options) => cm.insertAtCursor(text, options),
+        insertTab: () => cm.insertTab(),
+        undo: () => cm.undo(),
+        deleteCharBefore: () => cm.deleteCharBefore(),
+        moveCursor: (direction) => cm.moveCursor(direction),
+        moveLineStart: () => cm.moveLineStart(),
+        moveLineEnd: () => cm.moveLineEnd(),
+        getContentDOM: () => cm.getContentDOM(),
         setCursorEnd: () => cm.setCursorEnd(),
         setTheme: (theme) => cm.setTheme(theme),
         setPlaceholder: (text) => cm.setPlaceholder(text),
@@ -2138,6 +2173,7 @@ del _pycalc_glue_source
     updateBusyUi();
     hideOverlay();
     setStatus('status.ready');
+    initMobileKeyboardUi();
     if (editor) editor.focus();
     if (!state.history.length) renderConsole();
   }

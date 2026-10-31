@@ -50,12 +50,15 @@ def render_page(
 ) -> str:
     template = _read_text(TEMPLATE_PATH, "page.html")
     css = _read_text(ASSETS_DIR / "app.css", "app.css")
+    keyboard_css = _read_text(ASSETS_DIR / "keyboard.css", "keyboard.css")
     app_js = _read_text(ASSETS_DIR / "app.js", "app.js")
+    keyboard_js = _read_text(ASSETS_DIR / "keyboard.js", "keyboard.js")
     glue = _read_text(ASSETS_DIR / "python_glue.py", "python_glue.py")
     editor_js = _editor_bundle()
 
     _check_inline_script(pyodide_js, "pyodide.js")
     _check_inline_script(app_js, "app.js")
+    _check_inline_script(keyboard_js, "keyboard.js")
     _check_inline_script(glue, "python_glue.py")
     _check_inline_script(asm_source, f"pyodide asm ({runtime_mode})")
 
@@ -80,6 +83,8 @@ def render_page(
 
     replacements = {
         "__PYCALC_CSS__": css,
+        "__PYCALC_KEYBOARD_CSS__": keyboard_css,
+        "__PYCALC_KEYBOARD_JS__": keyboard_js,
         "__PYCALC_CONFIG__": config_json,
         "__PYCALC_ASSETS__": assets_json,
         "__PYCALC_I18N__": i18n_json,

@@ -189,6 +189,20 @@ EN: dict[str, str] = {
     "build.downloading": "Downloading {url}…",
     "build.downloaded": "  -> {name} ({size})",
     "build.retryChecksum": "[retry] checksum mismatch for {name}; downloading again",
+    "keyboard.tab.calc": "Calc",
+    "keyboard.tab.en": "English",
+    "keyboard.button.variables": "Variables",
+    "keyboard.button.functions": "Functions",
+    "keyboard.button.math": "Math",
+    "keyboard.button.libraries": "Libraries",
+    "keyboard.empty.variables": "No variables yet",
+    "keyboard.empty.functions": "No functions yet",
+    "keyboard.empty.libraries": "No libraries in this build",
+    "keyboard.empty.generic": "Nothing here",
+    "keyboard.key.space": "Space",
+    "keyboard.key.enter": "Enter",
+    "keyboard.key.undo": "Undo",
+    "keyboard.key.clear": "Clear",
 }
 
 ZH: dict[str, str] = {
@@ -356,6 +370,20 @@ ZH: dict[str, str] = {
     "build.downloading": "下载 {url} …",
     "build.downloaded": "  -> {name}（{size}）",
     "build.retryChecksum": "[重试] {name} 的缓存校验失败，删除后重新下载",
+    "keyboard.tab.calc": "计算",
+    "keyboard.tab.en": "英文",
+    "keyboard.button.variables": "变量",
+    "keyboard.button.functions": "函数",
+    "keyboard.button.math": "数学",
+    "keyboard.button.libraries": "库",
+    "keyboard.empty.variables": "暂无变量",
+    "keyboard.empty.functions": "暂无函数",
+    "keyboard.empty.libraries": "此构建没有可用的库",
+    "keyboard.empty.generic": "暂无内容",
+    "keyboard.key.space": "空格",
+    "keyboard.key.enter": "回车",
+    "keyboard.key.undo": "撤销",
+    "keyboard.key.clear": "清除",
 }
 
 JA: dict[str, str] = {
@@ -523,6 +551,20 @@ JA: dict[str, str] = {
     "build.downloading": "{url} をダウンロードしています…",
     "build.downloaded": "  -> {name}（{size}）",
     "build.retryChecksum": "[再試行] {name} のチェックサムが一致しないため再ダウンロードします",
+    "keyboard.tab.calc": "計算",
+    "keyboard.tab.en": "英語",
+    "keyboard.button.variables": "変数",
+    "keyboard.button.functions": "関数",
+    "keyboard.button.math": "数学",
+    "keyboard.button.libraries": "ライブラリ",
+    "keyboard.empty.variables": "変数はまだありません",
+    "keyboard.empty.functions": "関数はまだありません",
+    "keyboard.empty.libraries": "このビルドにライブラリはありません",
+    "keyboard.empty.generic": "何もありません",
+    "keyboard.key.space": "スペース",
+    "keyboard.key.enter": "入力",
+    "keyboard.key.undo": "元に戻す",
+    "keyboard.key.clear": "クリア",
 }
 
 MESSAGES: dict[str, dict[str, str]] = {"en": EN, "zh": ZH, "ja": JA}

@@ -16,11 +16,18 @@ import {
   completionStatus,
 } from '@codemirror/autocomplete';
 import {
+  cursorCharLeft,
+  cursorCharRight,
+  cursorLineEnd,
+  cursorLineStart,
   defaultKeymap,
+  deleteCharBackward,
   history,
   historyKeymap,
+  indentMore,
   indentWithTab,
   insertNewlineAndIndent,
+  undo,
 } from '@codemirror/commands';
 import {
   HighlightStyle,
@@ -441,10 +448,25 @@ export function create(parent, options = {}) {
         changes: { from: 0, to: view.state.doc.length, insert: text },
       });
     },
-    insertAtCursor: (text) => {
+    insertAtCursor: (text, options = {}) => {
       view.dispatch(view.state.replaceSelection(String(text)));
-      view.focus();
+      if (options.focus !== false) view.focus();
     },
+    insertTab: () => {
+      if (view.state.selection.ranges.some((range) => !range.empty)) {
+        indentMore(view);
+      } else {
+        view.dispatch(view.state.replaceSelection('    '));
+      }
+    },
+    undo: () => undo(view),
+    deleteCharBefore: () => deleteCharBackward(view),
+    moveCursor: (direction) => {
+      (direction < 0 ? cursorCharLeft : cursorCharRight)(view);
+    },
+    moveLineStart: () => cursorLineStart(view),
+    moveLineEnd: () => cursorLineEnd(view),
+    getContentDOM: () => view.contentDOM,
     setCursorEnd: () => {
       view.dispatch({ selection: { anchor: view.state.doc.length } });
     },

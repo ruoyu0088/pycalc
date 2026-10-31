@@ -97,6 +97,128 @@ def run_and_check(browser: Browser, code: str, expected_stdout: str) -> None:
     assert result["stdout"] == expected_stdout, (result["stdout"], expected_stdout)
 
 
+MOBILE_TAP_JS = """(label) => {
+  const selector = '.mk-key,.mk-tab,.mk-drawer-item,.mk-drawer-close';
+  const element = [...document.querySelectorAll(selector)]
+    .find((item) => item.textContent === label);
+  if (!element) throw new Error('no keyboard key ' + label);
+  for (const type of ['pointerdown', 'pointerup']) {
+    element.dispatchEvent(new PointerEvent(type, {
+      bubbles: true, pointerId: 1, pointerType: 'touch', isPrimary: true,
+    }));
+  }
+}"""
+
+
+def install_mobile_tap(browser: Browser) -> None:
+    browser.eval(f"window.__tap = {MOBILE_TAP_JS}")
+
+
+def tap_keyboard(browser: Browser, label: str) -> None:
+    browser.eval(f"window.__tap({json.dumps(label)})")
+
+
+def test_mobile_keyboard() -> None:
+    log("[4] mobile virtual keyboard")
+    html = OUT / "full314.html"
+    profile = OUT / "profiles" / "mobile-keyboard"
+    shutil.rmtree(profile, ignore_errors=True)
+    with Browser(file_url(html), profile=profile, timeout=180) as browser:
+        browser.call(
+            "Emulation.setDeviceMetricsOverride",
+            {"width": 390, "height": 844, "deviceScaleFactor": 3, "mobile": True},
+        )
+        browser.call("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
+        browser.call("Page.reload", {"ignoreCache": True})
+        browser.wait_ready(timeout=180)
+        install_mobile_tap(browser)
+
+        assert browser.eval("matchMedia('(pointer: coarse)').matches") is True
+        assert "viewport-fit=cover" in browser.eval(
+            "document.querySelector('meta[name=viewport]').content"
+        )
+        assert browser.eval("!!document.querySelector('.mobile-keyboard')") is True
+        assert browser.eval("document.body.classList.contains('mobile-keyboard-active')") is True
+        assert browser.eval("document.querySelectorAll('.mk-tab').length") == 2
+        assert browser.eval("[...document.querySelectorAll('.mk-tab')].map(x => x.textContent)") == [
+            "计算", "英文",
+        ]
+        assert browser.eval(
+            "getComputedStyle(document.querySelector('.composer-actions')).display"
+        ) == "none"
+        assert browser.eval("document.querySelector('.cm-content').getAttribute('inputmode')") == "none"
+        height = browser.eval("document.querySelector('.mobile-keyboard').getBoundingClientRect().height")
+        assert 220 <= height <= 330, height
+
+        for label in ["(", "1", "+", "2", ")", "*", "3"]:
+            tap_keyboard(browser, label)
+        assert browser.eval("window.__pycalc.getEditorValue()") == "(1+2)*3"
+        tap_keyboard(browser, "=")
+        wait_idle(browser)
+        assert browser.eval("window.__pycalc.lastEntry().result") == "9"
+        assert browser.eval("window.__pycalc.getEditorValue()") == ""
+        assert browser.eval("document.activeElement.classList.contains('cm-content')") is True
+        assert browser.eval("getComputedStyle(document.querySelector('.cm-cursor')).display") != "none"
+
+        tap_keyboard(browser, "库")
+        time.sleep(0.2)
+        assert browser.eval(
+            "[...document.querySelectorAll('.mk-drawer-item')].map(x => x.textContent)"
+        ) == ["np", "sp", "plt"]
+        tap_keyboard(browser, "np")
+        assert browser.eval("window.__pycalc.getEditorValue()") == "np"
+        assert browser.eval("!document.getElementById('mk-drawer').classList.contains('open')") is True
+
+        browser.eval("window.__pycalc.setEditorText('')")
+        tap_keyboard(browser, "数学")
+        time.sleep(0.2)
+        assert browser.eval("document.querySelectorAll('.mk-drawer-item').length") == 26
+        tap_keyboard(browser, "sin")
+        assert browser.eval("window.__pycalc.getEditorValue()") == "sin("
+
+        tap_keyboard(browser, "英文")
+        assert browser.eval(
+            "[...document.querySelectorAll('.mk-key')]"
+            ".filter(x => 'zxcvbnm'.includes(x.textContent)).length"
+        ) == 7
+        tap_keyboard(browser, "⇧")
+        assert browser.eval(
+            "[...document.querySelectorAll('.mk-key')].some(x => x.textContent === 'A')"
+        ) is True
+        tap_keyboard(browser, "A")
+        assert browser.eval("window.__pycalc.getEditorValue()") == "sin(A"
+        tap_keyboard(browser, "123")
+        assert browser.eval(
+            "[...document.querySelectorAll('.mk-key')].some(x => x.textContent === '0')"
+        ) is True
+        tap_keyboard(browser, "ABC")
+        assert browser.eval(
+            "[...document.querySelectorAll('.mk-key')].some(x => x.textContent === 'q')"
+        ) is True
+
+        browser.eval("window.__pycalc.setLanguage('en')")
+        time.sleep(0.2)
+        assert browser.eval("[...document.querySelectorAll('.mk-tab')].map(x => x.textContent)") == [
+            "Calc", "English",
+        ]
+        browser.eval("window.__pycalc.setLanguage('zh')")
+        time.sleep(0.2)
+        browser.screenshot(ART / "keyboard-mobile.png")
+
+        # Back to a normal desktop pointer: no keyboard is created and the
+        # composer actions return.
+        browser.call("Emulation.clearDeviceMetricsOverride")
+        browser.call("Emulation.setTouchEmulationEnabled", {"enabled": False})
+        browser.call("Page.reload", {"ignoreCache": True})
+        browser.wait_ready(timeout=180)
+        assert browser.eval("!!document.querySelector('.mobile-keyboard')") is False
+        assert browser.eval(
+            "getComputedStyle(document.querySelector('.composer-actions')).display"
+        ) != "none"
+        assert browser.eval("document.querySelector('.cm-content').getAttribute('inputmode')") is None
+    log("  PASS mobile keyboard")
+
+
 def test_minimal_314() -> None:
     log("[1] minimal build / 314.0.7")
     html = build_case("min314.html", [], "314.0.7")
@@ -261,7 +383,7 @@ def test_full_314() -> None:
 
 
 def test_full_0278() -> None:
-    log("[4] full build / 0.27.8 classic")
+    log("[5] full build / 0.27.8 classic")
     html = build_case("full0278.html", ["numpy", "sympy", "matplotlib"], "0.27.8")
     profile = OUT / "profiles" / "full0278"
     shutil.rmtree(profile, ignore_errors=True)
@@ -295,7 +417,7 @@ def test_full_0278() -> None:
 
 
 def test_custom_libraries() -> None:
-    log("[5] custom library aliases")
+    log("[6] custom library aliases")
     html = build_case(
         "custom314.html",
         ["numpy"],
@@ -423,7 +545,7 @@ def test_pwa() -> None:
 
 
 def test_new_features() -> None:
-    log("[6] languages, libraries, tables, compact console, editor behaviour")
+    log("[7] languages, libraries, tables, compact console, editor behaviour")
     html = OUT / "full314.html"
     profile = OUT / "profiles" / "new-features"
     shutil.rmtree(profile, ignore_errors=True)
@@ -702,21 +824,11 @@ def test_new_features() -> None:
         assert browser.eval("window.__pycalc.active()")["name"] == "history ops"
         assert browser.eval("document.getElementById('history-undo').disabled") is True
 
-        # coarse-pointer mode hides the desktop run controls
-        browser.call(
-            "Emulation.setDeviceMetricsOverride",
-            {"width": 390, "height": 844, "deviceScaleFactor": 3, "mobile": True},
-        )
-        browser.call("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
-        assert browser.eval("matchMedia('(pointer: coarse)').matches") is True
-        assert browser.eval("getComputedStyle(document.querySelector('.composer-actions')).display") == "none"
-        browser.call("Emulation.clearDeviceMetricsOverride")
-        browser.call("Emulation.setTouchEmulationEnabled", {"enabled": False})
     log("  PASS new features")
 
 
 def test_cross_version_history() -> None:
-    log("[7] cross-version history (314 -> 0.27.8)")
+    log("[8] cross-version history (314 -> 0.27.8)")
     profile = OUT / "profiles" / "cross-version"
     shutil.rmtree(profile, ignore_errors=True)
     with Browser(file_url(OUT / "full314.html"), profile=profile, timeout=180) as browser:
@@ -748,6 +860,7 @@ def main() -> int:
         test_minimal_314()
         test_full_314()
         test_pwa()
+        test_mobile_keyboard()
         test_full_0278()
         test_custom_libraries()
         test_new_features()

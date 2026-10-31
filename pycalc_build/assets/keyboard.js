@@ -1,0 +1,484 @@
+/* PyCalc mobile on-screen keyboard.
+ *
+ * The layout comes from CFG.keyboard (built from keyboard_layout.py), so this
+ * file contains no key, math-function or library lists.
+ */
+(() => {
+  'use strict';
+
+  const COARSE = window.matchMedia && window.matchMedia('(pointer: coarse)');
+  let translate = (key) => key;
+
+  const state = {
+    layout: null,
+    callbacks: null,
+    activeTab: null,
+    currentView: 'letters',
+    uppercase: false,
+    drawerOpen: false,
+    drawerId: null,
+    drawerTimer: null,
+    initialized: false,
+  };
+
+  function t(key) {
+    try {
+      return translate(key);
+    } catch (_) {
+      return key;
+    }
+  }
+
+  function createKeyboardDOM() {
+    const app = document.getElementById('app');
+    if (!app || document.querySelector('.mobile-keyboard')) return;
+
+    const keyboard = document.createElement('div');
+    keyboard.className = 'mobile-keyboard';
+    document.body.classList.add('mobile-keyboard-active');
+    keyboard.innerHTML = `
+      <div class="mk-tabs" id="mk-tabs"></div>
+      <div class="mk-panel" id="mk-panel"></div>
+    `;
+    app.appendChild(keyboard);
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'mk-drawer-backdrop hidden';
+    backdrop.id = 'mk-drawer-backdrop';
+    backdrop.addEventListener('click', closeDrawer);
+    document.body.appendChild(backdrop);
+
+    const drawer = document.createElement('div');
+    drawer.className = 'mk-drawer hidden';
+    drawer.id = 'mk-drawer';
+    drawer.innerHTML = `
+      <div class="mk-drawer-header">
+        <span class="mk-drawer-title" id="mk-drawer-title"></span>
+        <div role="button" tabindex="-1" class="mk-drawer-close" id="mk-drawer-close">×</div>
+      </div>
+      <div class="mk-drawer-list" id="mk-drawer-list"></div>
+    `;
+    document.body.appendChild(drawer);
+    bindPress(document.getElementById('mk-drawer-close'), closeDrawer);
+  }
+
+  /**
+   * Keep an Android IME from opening while preserving the CodeMirror caret.
+   *
+   * `inputmode=none` is the primary mechanism.  Some iOS versions ignore it;
+   * the visualViewport fallback closes an IME that still appears, which costs
+   * the caret on those browsers but still keeps the system keyboard hidden.
+   */
+  function disableSystemKeyboard() {
+    const contentDOM = state.callbacks.getEditorContentDOM
+      ? state.callbacks.getEditorContentDOM()
+      : null;
+    if (!contentDOM) return;
+
+    contentDOM.setAttribute('inputmode', 'none');
+    contentDOM.setAttribute('autocorrect', 'off');
+    contentDOM.setAttribute('autocapitalize', 'none');
+    contentDOM.setAttribute('spellcheck', 'false');
+    contentDOM.addEventListener('contextmenu', (event) => event.preventDefault(), true);
+
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    let baseline = Math.max(window.innerHeight || 0, viewport.height || 0);
+    contentDOM.addEventListener('focus', () => {
+      baseline = Math.max(window.innerHeight || 0, viewport.height || 0);
+    }, true);
+    viewport.addEventListener('resize', () => {
+      if (document.activeElement !== contentDOM) return;
+      if (viewport.height < baseline - 120) contentDOM.blur();
+    });
+  }
+
+  function renderTabs() {
+    const host = document.getElementById('mk-tabs');
+    if (!host) return;
+    host.innerHTML = '';
+    for (const tab of state.layout.tabs || []) {
+      const button = document.createElement('div');
+      button.setAttribute('role', 'button');
+      button.setAttribute('tabindex', '-1');
+      button.className = 'mk-tab' + (tab.id === state.activeTab ? ' active' : '');
+      button.textContent = t(tab.labelKey);
+      button.dataset.tab = tab.id;
+      bindPress(button, () => {
+        if (state.drawerOpen) closeDrawer();
+        if (tab.id === state.activeTab) return;
+        state.activeTab = tab.id;
+        state.currentView = 'letters';
+        state.uppercase = false;
+        renderTabs();
+        renderActiveTab();
+      });
+      host.appendChild(button);
+    }
+  }
+
+  function activeTab() {
+    return (state.layout.tabs || []).find((tab) => tab.id === state.activeTab)
+      || (state.layout.tabs || [])[0]
+      || null;
+  }
+
+  function renderActiveTab() {
+    const panel = document.getElementById('mk-panel');
+    const tab = activeTab();
+    if (!panel || !tab) return;
+    panel.innerHTML = '';
+    if (tab.type === 'split') renderSplitTab(tab, panel);
+    else if (tab.type === 'keyboard') renderKeyboardTab(tab, panel);
+  }
+
+  function renderSplitTab(tab, panel) {
+    const split = document.createElement('div');
+    split.className = 'mk-split';
+
+    const left = document.createElement('div');
+    left.className = 'mk-split-left';
+    for (const item of (tab.left && tab.left.items) || []) {
+      left.appendChild(createKeyButton(item));
+    }
+    split.appendChild(left);
+
+    const right = document.createElement('div');
+    right.className = 'mk-split-right';
+    right.style.gridTemplateColumns = `repeat(${Number(tab.right.columns) || 5}, 1fr)`;
+    for (const row of (tab.right && tab.right.rows) || []) {
+      for (const key of row) right.appendChild(createKeyButton(key));
+    }
+    split.appendChild(right);
+    panel.appendChild(split);
+  }
+
+  function renderKeyboardTab(tab, panel) {
+    const view = document.createElement('div');
+    view.className = 'mk-keyboard-view';
+    const rows = (tab.views && (tab.views[state.currentView] || tab.views.letters)) || [];
+    for (const row of rows) {
+      const line = document.createElement('div');
+      line.className = 'mk-row';
+      const items = typeof row === 'string' ? row.split(/\s+/).filter(Boolean) : row;
+      for (const item of items) {
+        if (typeof item === 'string') {
+          for (const part of item.split(/\s+/).filter(Boolean)) {
+            line.appendChild(createKeyButton(normalizeKey(part)));
+          }
+        } else {
+          line.appendChild(createKeyButton(normalizeKey(item)));
+        }
+      }
+      view.appendChild(line);
+    }
+    panel.appendChild(view);
+  }
+
+  function normalizeKey(item) {
+    if (typeof item !== 'string') return item;
+    const display = state.uppercase && /^[a-z]$/.test(item) ? item.toUpperCase() : item;
+    return { label: display, insert: display };
+  }
+
+  function createKeyButton(key) {
+    const button = document.createElement('div');
+    button.setAttribute('role', 'button');
+    button.setAttribute('tabindex', '-1');
+    button.className = 'mk-key';
+    button.dataset.action = key.action || 'insert';
+    if (key.style === 'run') button.classList.add('run');
+    if (key.wide) button.classList.add('wide');
+    if (key.span && Number(key.span) > 1) button.style.gridColumn = `span ${Number(key.span)}`;
+    if (key.labelKey) button.textContent = t(key.labelKey);
+    else button.textContent = key.label == null ? '' : String(key.label);
+    if (key.action === 'shift' && state.uppercase) button.classList.add('shift-active');
+    button.setAttribute('aria-label', button.textContent);
+    bindPress(button, () => handleKeyPress(key));
+    return button;
+  }
+
+  function insertText(text) {
+    if (!state.callbacks.insert) return;
+    state.callbacks.insert(text);
+  }
+
+  function insertKeyText(text) {
+    insertText(text);
+    if (state.uppercase) {
+      state.uppercase = false;
+      if (state.activeTab === 'en') renderActiveTab();
+    }
+  }
+
+  function handleKeyPress(key) {
+    if (key.insert !== undefined) {
+      insertKeyText(String(key.insert));
+      return;
+    }
+
+    switch (key.action) {
+      case 'run':
+        if (state.callbacks.run) state.callbacks.run();
+        break;
+      case 'backspace':
+        if (state.callbacks.backspace) state.callbacks.backspace();
+        break;
+      case 'cursorLeft':
+        if (state.callbacks.moveCursor) state.callbacks.moveCursor(-1);
+        break;
+      case 'cursorRight':
+        if (state.callbacks.moveCursor) state.callbacks.moveCursor(1);
+        break;
+      case 'lineStart':
+        if (state.callbacks.moveLineStart) state.callbacks.moveLineStart();
+        break;
+      case 'lineEnd':
+        if (state.callbacks.moveLineEnd) state.callbacks.moveLineEnd();
+        break;
+      case 'undo':
+        if (state.callbacks.undo) state.callbacks.undo();
+        break;
+      case 'tab':
+        if (state.callbacks.tab) state.callbacks.tab();
+        break;
+      case 'clear':
+        if (state.callbacks.clear) state.callbacks.clear();
+        break;
+      case 'space':
+        insertKeyText(' ');
+        break;
+      case 'enter':
+        insertKeyText('\n');
+        break;
+      case 'shift':
+        state.uppercase = !state.uppercase;
+        renderActiveTab();
+        break;
+      case 'view:letters':
+        state.currentView = 'letters';
+        state.uppercase = false;
+        renderActiveTab();
+        break;
+      case 'view:numbers':
+        state.currentView = 'numbers';
+        state.uppercase = false;
+        renderActiveTab();
+        break;
+      case 'openDrawer':
+        openDrawer(key.drawer);
+        break;
+      default:
+        console.warn('[PyCalc] unknown keyboard action:', key.action);
+    }
+  }
+
+  /**
+   * Use Pointer Events where available and a touch/mouse fallback otherwise.
+   * preventDefault on pointerdown keeps the CodeMirror content editable focused
+   * (and prevents a click-generated focus shift).
+   */
+  function bindPress(element, handler) {
+    if (!element) return;
+    let pressed = false;
+
+    const reset = () => {
+      pressed = false;
+      element.classList.remove('pressed');
+    };
+    const down = (event) => {
+      event.preventDefault();
+      pressed = true;
+      element.classList.add('pressed');
+      if (element.setPointerCapture && event.pointerId !== undefined) {
+        try { element.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
+      }
+    };
+    const up = (event) => {
+      event.preventDefault();
+      if (!pressed) return;
+      reset();
+      handler();
+    };
+
+    if (window.PointerEvent) {
+      element.addEventListener('pointerdown', down);
+      element.addEventListener('pointerup', up);
+      element.addEventListener('pointercancel', reset);
+      element.addEventListener('pointerleave', reset);
+    } else {
+      element.addEventListener('touchstart', (event) => {
+        event.preventDefault();
+        down(event);
+      }, { passive: false });
+      element.addEventListener('touchend', (event) => {
+        event.preventDefault();
+        up(event);
+      }, { passive: false });
+      element.addEventListener('touchcancel', reset);
+      element.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+        down(event);
+      });
+      element.addEventListener('mouseup', up);
+    }
+  }
+
+  function clearDrawerTimer() {
+    if (state.drawerTimer !== null) {
+      clearTimeout(state.drawerTimer);
+      state.drawerTimer = null;
+    }
+  }
+
+  function drawerItems(def) {
+    let items = [];
+    if (def.source === 'variables') items = state.callbacks.getVariables ? state.callbacks.getVariables() : [];
+    else if (def.source === 'functions') items = state.callbacks.getFunctions ? state.callbacks.getFunctions() : [];
+    else if (def.source === 'libraries') items = state.callbacks.getLibraries ? state.callbacks.getLibraries() : [];
+    else if (def.items) items = def.items;
+    return Array.isArray(items) ? items : [];
+  }
+
+  function drawerItemParts(def, item) {
+    if (typeof item === 'string') {
+      return { label: item, value: item, title: item };
+    }
+    const field = def.displayField || def.insertField;
+    if (def.source === 'libraries') {
+      const alias = item.alias || item.name || item.id || item.label || String(item);
+      return {
+        label: alias,
+        value: item.alias || item.name || item.id || alias,
+        title: item.label || item.module || alias,
+      };
+    }
+    if (field && item[field] !== undefined) {
+      return {
+        label: item[field],
+        value: item[field],
+        title: item.type || item.label || item[field],
+      };
+    }
+    if (item.label !== undefined) {
+      return {
+        label: item.label,
+        value: item.insert !== undefined ? item.insert : item.label,
+        title: item.label,
+      };
+    }
+    return { label: String(item), value: String(item), title: '' };
+  }
+
+  function renderDrawerContent(drawerId) {
+    const def = state.layout.drawers && state.layout.drawers[drawerId];
+    if (!def) return;
+    const title = document.getElementById('mk-drawer-title');
+    const list = document.getElementById('mk-drawer-list');
+    if (!title || !list) return;
+    title.textContent = t(def.titleKey);
+    list.innerHTML = '';
+
+    const items = drawerItems(def);
+    if (!items.length) {
+      const empty = document.createElement('div');
+      empty.className = 'mk-drawer-empty';
+      empty.textContent = t(def.emptyKey || 'keyboard.empty.generic');
+      list.appendChild(empty);
+      return;
+    }
+
+    for (const item of items) {
+      const parts = drawerItemParts(def, item);
+      const button = document.createElement('div');
+      button.setAttribute('role', 'button');
+      button.setAttribute('tabindex', '-1');
+      button.className = 'mk-drawer-item';
+      button.textContent = parts.label;
+      if (parts.title) button.title = parts.title;
+      bindPress(button, () => {
+        insertText(parts.value + (def.suffix || ''));
+        closeDrawer();
+      });
+      list.appendChild(button);
+    }
+  }
+
+  function openDrawer(drawerId) {
+    const def = state.layout.drawers && state.layout.drawers[drawerId];
+    if (!def) return;
+    clearDrawerTimer();
+    state.drawerOpen = true;
+    state.drawerId = drawerId;
+    renderDrawerContent(drawerId);
+
+    const drawer = document.getElementById('mk-drawer');
+    const backdrop = document.getElementById('mk-drawer-backdrop');
+    if (!drawer || !backdrop) return;
+    drawer.classList.remove('hidden');
+    backdrop.classList.remove('hidden');
+    requestAnimationFrame(() => {
+      if (!state.drawerOpen || state.drawerId !== drawerId) return;
+      drawer.classList.add('open');
+      backdrop.classList.add('open');
+    });
+  }
+
+  function closeDrawer() {
+    if (!state.drawerOpen && !document.getElementById('mk-drawer')) return;
+    state.drawerOpen = false;
+    state.drawerId = null;
+    clearDrawerTimer();
+    const drawer = document.getElementById('mk-drawer');
+    const backdrop = document.getElementById('mk-drawer-backdrop');
+    if (!drawer || !backdrop) return;
+    drawer.classList.remove('open');
+    backdrop.classList.remove('open');
+    state.drawerTimer = setTimeout(() => {
+      drawer.classList.add('hidden');
+      backdrop.classList.add('hidden');
+      state.drawerTimer = null;
+    }, 180);
+  }
+
+  function refresh() {
+    renderTabs();
+    renderActiveTab();
+    if (state.drawerOpen && state.drawerId) renderDrawerContent(state.drawerId);
+  }
+
+  function initMobileKeyboard(options) {
+    if (!COARSE || !COARSE.matches) return null;
+    if (state.initialized) return window.__pycalcKeyboard || null;
+    if (!options || !options.layout) {
+      console.warn('[PyCalc] keyboard layout is missing');
+      return null;
+    }
+
+    state.callbacks = options;
+    state.layout = options.layout;
+    translate = typeof options.t === 'function' ? options.t : (key) => key;
+    state.activeTab = (state.layout.tabs[0] && state.layout.tabs[0].id) || 'calc';
+
+    createKeyboardDOM();
+    disableSystemKeyboard();
+    renderTabs();
+    renderActiveTab();
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && state.drawerOpen) closeDrawer();
+    });
+
+    state.initialized = true;
+    const api = {
+      refresh,
+      closeDrawer,
+      isCoarse: () => Boolean(COARSE && COARSE.matches),
+      activeTab: () => state.activeTab,
+    };
+    window.__pycalcKeyboard = api;
+    return api;
+  }
+
+  window.initMobileKeyboard = initMobileKeyboard;
+})();

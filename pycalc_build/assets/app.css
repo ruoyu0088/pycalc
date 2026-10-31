@@ -61,6 +61,9 @@ button, select, textarea { font: inherit; }
   height: 100vh;
   height: 100dvh;
   min-height: 0;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
 }
 
 /* ---------- top bar ---------- */
@@ -834,6 +837,6 @@ pre.error {
   pre.code, pre.stream, pre.result, pre.error { font-size: 12.2px; }
 }
 
-@media (pointer: coarse) {
-  .composer-actions { display: none !important; }
+body.mobile-keyboard-active .composer-actions {
+  display: none !important;
 }

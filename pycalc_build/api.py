@@ -23,6 +23,7 @@ from .config import (
 )
 from .embed import encode_file, should_gzip_runtime
 from .i18n import MESSAGES, tr
+from .keyboard_layout import LAYOUT as KEYBOARD_LAYOUT
 from .libraries import default_aliases
 from .pwa import write_pwa_files
 from .render import render_page
@@ -255,6 +256,7 @@ def build(config: BuildConfig, log: Log | None = None) -> BuildResult:
         "packageVersions": versions,
         "libs": user_libs,
         "availableLibraries": libraries,
+        "keyboard": KEYBOARD_LAYOUT,
         "gzipWasm": config.gzip_wasm,
         "dbName": APP_DB_NAME,
         "appId": APP_ID,
