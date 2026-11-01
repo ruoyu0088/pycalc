@@ -226,7 +226,7 @@ On `pointer: coarse` devices a screen keyboard is created at the bottom of `#app
 
 - **Calc**: 5 vertical buttons on the left (variables / functions / math / libraries / Python) and a 6×5 number/symbol keypad on the right; digit keys, `π`, brackets, space, newline and the run key are all here.
 - **English**: 5 rows in letter mode, `⇧` capitalises only the next letter; `123` switches to number mode and `ABC` switches back. Number mode includes symbols and `Space / ← / → / Enter`.
-- **Compact tab row**: the Calc / English / Complete / Clear / Collapse buttons use tighter spacing and padding; the `[1]` button shows or hides the `[n]` execution numbers in history, so hidden prompts let the content use the full width; the preference is saved globally.
+- **Compact tab row**: the Calc / English / Complete / Clear / Collapse buttons use tighter spacing and padding; the `[1]` button shows or hides the `[n]` execution numbers in history; when hidden, input uses a thin blue rule and output a thin green rule so they stay distinguishable while using the full width; the preference is saved globally.
 - **Cursor arrows**: `↑` / `↓` in the tab row move the cursor up/down in normal positions; on the first/last line they switch to the previous/next history entry instead, matching the physical ArrowUp/ArrowDown keys.
 - **Clear**: sits after the English tab and only clears the editor content, without changing the current tab, the history or the variables.
 - **Collapse/expand**: the `⌄` / `⌃` at the far right of the tab row controls whether the keyboard panel is shown; when collapsed only the tab row remains and the history area grows automatically. Clicking it again, or clicking the Calc/English tab, slides the keyboard out.
