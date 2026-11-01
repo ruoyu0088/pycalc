@@ -1,5 +1,7 @@
 # PyCalc
 
+**[中文](README.md)** | [English](README.en.md) | [日本語](README.ja.md)
+
 PyCalc 是一个**单文件离线 Python 计算器生成器**。构建脚本把 Pyodide 运行时和选定的科学计算库全部内联进一个 HTML；这个 HTML 可以双击、通过 `file://` 打开，不访问网络，具备 Jupyter/IPython 风格的输入输出、多个命名会话，以及跨刷新恢复的历史和变量。
 
 ```
@@ -205,7 +207,9 @@ https://ruoyu0088.github.io/pycalc/
 - **启动顺序**：编辑器和历史先显示，右上角固定浮层显示 `加载 Python… / 安装扩展库… / 初始化… / 恢复会话…`，不占用顶栏布局；runtime 就绪前运行、会话切换和扩展库勾选禁用。Python 在 Web Worker 中启动和运行，加载期间主线程仍可输入、滚动历史；Matplotlib 只在勾选 `plt` 或代码真正 `import` 时加载，普通计算不会再触发 `matplotlib.pyplot`。
 - **明暗主题**：CSS、CodeMirror 语法高亮、Matplotlib 默认样式一起切换。首次跟随系统 `prefers-color-scheme`，之后记住选择。Matplotlib 只影响切换主题之后生成的图，历史 PNG 不重绘。
 - **扩展库 checkbox**：输入框上方列出**构建时库定义**里的每个别名，例如 `numpy (np)`、`matplotlib.pyplot (plt)`、`sympy (sp)`、`pandas (pd)`。勾选后自动导入，无需写 `import`。新会话默认只加载 Math，扩展库需要勾选；选择状态保存在会话里，切换会话时恢复。
-- **Math 始终加载**：`sin, cos, tan, sqrt, exp, log, log10, factorial, pi, e, inf, nan` 等名字可直接使用，像普通计算器一样；Math 不出现在扩展库列表中，也不会写入变量表。
+- **Math 始终加载**：`sin, cos, tan, sqrt, exp, log, log10, factorial, pi, e, inf, nan` 等名字可直接使用，像普通计算器一样；Math 不出现在扩展库列表中，也不会写入变量表。`range` 已移到函数抽屉。
+- **函数抽屉**：`keyboard_layout.py` 的 `drawers.functions.items` 可手工维护内置函数（当前为 `print, range, enumerate, len, int, float, str, list, dict, set, tuple, sum, min, max, sorted, zip, map, filter`）；这些固定项排在前面，会话中用户定义的函数会自动追加在后面。
+- **变量抽屉**：`drawers.variables.items` 默认手工放入 `x, y, z, a, b, c`，排在用户变量前面；同名用户变量不会重复显示。
 - **左侧栏两张表**：当前会话的用户变量（名称 / 类型 / 值）和用户函数（名称 / 参数）。pandas / polars 的 `DataFrame` 值只显示 `shape` 和前 8 个列名，不显示完整表格。每次运行、切换会话、修改扩展库后刷新；自动导入的名字和函数不会出现在表里。
 
 ---
@@ -363,7 +367,7 @@ python tests\acceptance.py
 - HTTP/PWA 下 module worker 与 `file://` 下 classic worker 两条路径；
 - Math 默认可用（`sin(pi/2)`），无需 import；
 - numpy / sympy / matplotlib 与图片输出；
-- 三语切换、扩展库自动导入与按会话恢复、变量/函数表；
+- 三语切换、扩展库自动导入与按会话恢复、变量/函数表；变量/函数抽屉手工项在用户项之前并去重、`range` 从 Math 移入 Func；
 - 一个连续输出块、`[n]` 编号插入到当前光标且不清空已有内容；
 - pandas / polars `DataFrame` 变量只显示 shape 和列名；
 - 手机系统键盘不接管：Android `inputmode=none`、iPhone `contenteditable=false` + focus 光标、虚拟键盘 DOM、calc/en 两 tab + 清空 + 收起按钮、`(1+2)*3` → 9、`⇧` / `123` / `ABC`、语言切换即时更新；
