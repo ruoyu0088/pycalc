@@ -312,6 +312,8 @@ LAYOUT = {
         ],
         "matplotlib.pyplot": [
             {"label": "plt", "insert": "plt"},
+            {"label": "fig", "insert": "fig"},
+            {"label": "ax", "insert": "ax"},
             {"label": "plot", "insert": "?plot("},
             {"label": "scatter", "insert": "?scatter("},
             {"label": "bar", "insert": "?bar("},
@@ -330,6 +332,7 @@ LAYOUT = {
             {"label": "set_ylabel", "insert": ".set_ylabel("},
             {"label": "set_xlim", "insert": ".set_xlim("},
             {"label": "set_ylim", "insert": ".set_ylim("},
+            {"label": "3D Axe", "insert": "?figure().add_subplot(projection='3d')"},
         ],
         "pandas": [
             {"label": "pd", "insert": "pd"},
