@@ -19,8 +19,10 @@ import {
 import {
   cursorCharLeft,
   cursorCharRight,
+  cursorLineDown,
   cursorLineEnd,
   cursorLineStart,
+  cursorLineUp,
   defaultKeymap,
   deleteCharBackward,
   history,
@@ -513,6 +515,15 @@ export function create(parent, options = {}) {
     deleteCharBefore: () => deleteCharBackward(view),
     moveCursor: (direction) => {
       (direction < 0 ? cursorCharLeft : cursorCharRight)(view);
+    },
+    moveHistoryOrCursor: (delta) => {
+      if (delta < 0) {
+        if (atFirstLine(view) && onHistory(-1) === true) return;
+        cursorLineUp(view);
+      } else {
+        if (atLastLine(view) && onHistory(1) === true) return;
+        cursorLineDown(view);
+      }
     },
     moveLineStart: () => cursorLineStart(view),
     moveLineEnd: () => cursorLineEnd(view),

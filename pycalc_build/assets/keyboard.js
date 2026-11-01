@@ -164,6 +164,23 @@
     });
     host.appendChild(autocompleteTab);
 
+    for (const [label, direction, titleKey] of [
+      ['↑', -1, 'keyboard.key.cursorUp'],
+      ['↓', 1, 'keyboard.key.cursorDown'],
+    ]) {
+      const cursor = document.createElement('div');
+      cursor.setAttribute('role', 'button');
+      cursor.setAttribute('tabindex', '-1');
+      cursor.className = 'mk-tab mk-cursor-tab';
+      cursor.textContent = label;
+      cursor.title = t(titleKey);
+      cursor.setAttribute('aria-label', cursor.title);
+      bindPress(cursor, () => {
+        if (state.callbacks.historyOrCursor) state.callbacks.historyOrCursor(direction);
+      });
+      host.appendChild(cursor);
+    }
+
     const signatureTab = document.createElement('div');
     signatureTab.setAttribute('role', 'button');
     signatureTab.setAttribute('tabindex', '-1');
@@ -341,6 +358,12 @@
         break;
       case 'cursorRight':
         if (state.callbacks.moveCursor) state.callbacks.moveCursor(1);
+        break;
+      case 'cursorUp':
+        if (state.callbacks.historyOrCursor) state.callbacks.historyOrCursor(-1);
+        break;
+      case 'cursorDown':
+        if (state.callbacks.historyOrCursor) state.callbacks.historyOrCursor(1);
         break;
       case 'lineStart':
         if (state.callbacks.moveLineStart) state.callbacks.moveLineStart();

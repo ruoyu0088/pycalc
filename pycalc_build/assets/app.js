@@ -2079,6 +2079,10 @@
         if (editor && editor.triggerSignature) editor.triggerSignature();
       },      
       moveCursor: (direction) => editor.moveCursor && editor.moveCursor(direction),
+      historyOrCursor: (direction) => {
+        if (editor.moveHistoryOrCursor) editor.moveHistoryOrCursor(direction);
+        if (editor.focus) editor.focus();
+      },
       moveLineStart: () => editor.moveLineStart && editor.moveLineStart(),
       moveLineEnd: () => editor.moveLineEnd && editor.moveLineEnd(),
       getEditorContentDOM: () => editor.getContentDOM && editor.getContentDOM(),
@@ -2216,6 +2220,7 @@
         undo: () => cm.undo(),
         deleteCharBefore: () => cm.deleteCharBefore(),
         moveCursor: (direction) => cm.moveCursor(direction),
+        moveHistoryOrCursor: (direction) => cm.moveHistoryOrCursor(direction),
         moveLineStart: () => cm.moveLineStart(),
         moveLineEnd: () => cm.moveLineEnd(),
         getContentDOM: () => cm.getContentDOM(),
