@@ -19,3 +19,4 @@ tests/artifacts/
 # Editor backup files
 *~
 *.swp
+release.ps1
