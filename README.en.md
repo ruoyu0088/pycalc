@@ -226,7 +226,7 @@ On `pointer: coarse` devices a screen keyboard is created at the bottom of `#app
 
 - **Calc**: 5 vertical buttons on the left (variables / functions / math / libraries / Python) and a 6×5 number/symbol keypad on the right; digit keys, `π`, brackets, space, newline and the run key are all here.
 - **English**: 5 rows in letter mode, `⇧` capitalises only the next letter; `123` switches to number mode and `ABC` switches back. Number mode includes symbols and `Space / ← / → / Enter`.
-- **Compact tab row**: the Calc / English / Complete / Clear / Collapse buttons use tighter spacing and padding.
+- **Compact tab row**: the Calc / English / Complete / Clear / Collapse buttons use tighter spacing and padding; the `[1]` button shows or hides the `[n]` execution numbers in history, so hidden prompts let the content use the full width; the preference is saved globally.
 - **Cursor arrows**: `↑` / `↓` in the tab row move the cursor up/down in normal positions; on the first/last line they switch to the previous/next history entry instead, matching the physical ArrowUp/ArrowDown keys.
 - **Clear**: sits after the English tab and only clears the editor content, without changing the current tab, the history or the variables.
 - **Collapse/expand**: the `⌄` / `⌃` at the far right of the tab row controls whether the keyboard panel is shown; when collapsed only the tab row remains and the history area grows automatically. Clicking it again, or clicking the Calc/English tab, slides the keyboard out.
@@ -374,7 +374,7 @@ The browser tests drive Chrome/Edge directly over CDP and do not depend on Playw
 - three-language switching, automatic library import and per-session restore, variables/functions tables; manual entries in the variable/function drawers come before user entries and are de-duplicated, and `range` has moved from Math to Func;
 - one continuous output block, `[n]` numbers inserted at the current cursor without clearing existing content;
 - pandas / polars `DataFrame` variables show only shape and column names;
-- the phone system keyboard does not take over: Android `inputmode=none`, iPhone `contenteditable=false` + focus cursor, virtual keyboard DOM, calc/en tabs + clear + collapse buttons, `(1+2)*3` → 9, `⇧` / `123` / `ABC`, language switch updates immediately;
+- the phone system keyboard does not take over: Android `inputmode=none`, iPhone `contenteditable=false` + focus cursor, virtual keyboard DOM, calc/en tabs + clear + collapse buttons, `[1]` execution-number toggle, `(1+2)*3` → 9, `⇧` / `123` / `ABC`, language switch updates immediately;
 - hiding/showing the Session bar in the phone top bar, workspace height changes and persistence after collapsing/expanding the keyboard;
 - library quick tabs: only ticked libraries shown, alias labels, button text without `?`/`.`/`(`, `?` / `?.` / `.` insertion rules, object-only member hints;
 - attribute completion (`x.` / `np.`), type inference (`ndarray`), function signature hints, bracket/quote pairing, high-contrast selection;
