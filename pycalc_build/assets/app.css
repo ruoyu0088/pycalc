@@ -508,6 +508,9 @@ body.resizing-sidebar {
 .prompt-btn.out { color: var(--green); }
 .prompt-btn.out:hover { background: var(--green-soft); }
 
+body.hide-prompts .prompt-btn { display: none; }
+body.hide-prompts .io-row { gap: 0; }
+
 pre.code, pre.stream, pre.result, pre.error {
   margin: 0;
   font-family: var(--mono);

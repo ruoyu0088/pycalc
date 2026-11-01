@@ -164,6 +164,22 @@
     });
     host.appendChild(autocompleteTab);
 
+    const promptTab = document.createElement('div');
+    promptTab.setAttribute('role', 'button');
+    promptTab.setAttribute('tabindex', '-1');
+    const promptsVisible = state.callbacks.showPrompts
+      ? Boolean(state.callbacks.showPrompts())
+      : true;
+    promptTab.className = 'mk-tab mk-prompt-tab' + (promptsVisible ? ' active' : '');
+    promptTab.textContent = '[1]';
+    promptTab.title = t(promptsVisible ? 'keyboard.key.hidePrompts' : 'keyboard.key.showPrompts');
+    promptTab.setAttribute('aria-label', promptTab.title);
+    promptTab.setAttribute('aria-pressed', String(promptsVisible));
+    bindPress(promptTab, () => {
+      if (state.callbacks.togglePrompts) state.callbacks.togglePrompts();
+    });
+    host.appendChild(promptTab);
+
     for (const [label, direction, titleKey] of [
       ['↑', -1, 'keyboard.key.cursorUp'],
       ['↓', 1, 'keyboard.key.cursorDown'],

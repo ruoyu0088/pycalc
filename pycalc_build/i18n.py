@@ -246,6 +246,8 @@ EN: dict[str, str] = {
     "keyboard.show": "Show keyboard",
     "keyboard.key.autocomplete": "Comp",
     "keyboard.key.signature": "Sig",
+    "keyboard.key.hidePrompts": "Hide execution numbers",
+    "keyboard.key.showPrompts": "Show execution numbers",
 }
 
 ZH: dict[str, str] = {
@@ -469,7 +471,9 @@ ZH: dict[str, str] = {
     "keyboard.hide": "收起键盘",
     "keyboard.show": "展开键盘",
     "keyboard.key.autocomplete": "补全",
-    "keyboard.key.signature": "提示",    
+    "keyboard.key.signature": "提示",
+    "keyboard.key.hidePrompts": "隐藏运行编号",
+    "keyboard.key.showPrompts": "显示运行编号",
 }
 
 JA: dict[str, str] = {
@@ -694,6 +698,8 @@ JA: dict[str, str] = {
     "keyboard.show": "キーボードを表示",
     "keyboard.key.autocomplete": "補完",
     "keyboard.key.signature": "引数",
+    "keyboard.key.hidePrompts": "実行番号を隠す",
+    "keyboard.key.showPrompts": "実行番号を表示",
 }
 
 MESSAGES: dict[str, dict[str, str]] = {"en": EN, "zh": ZH, "ja": JA}

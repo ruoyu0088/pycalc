@@ -201,6 +201,7 @@
     numpyCols: 10,
     floatDigits: 10,
     hidePlotResult: false,
+    showPrompts: true,
     sessionBarHidden: false,
   };
 
@@ -748,6 +749,7 @@
         : [6, 8, 10, 12, 15].includes(Number(meta.floatDigits))
           ? Number(meta.floatDigits) : 10,
       hidePlotResult: Boolean(meta.hidePlotResult),
+      showPrompts: meta.showPrompts !== false,
       sessionBarHidden: Boolean(meta.sessionBarHidden),
     };
   }
@@ -772,6 +774,7 @@
         numpyCols: state.ui.numpyCols,
         floatDigits: state.ui.floatDigits,
         hidePlotResult: state.ui.hidePlotResult,
+        showPrompts: state.ui.showPrompts,
         sessionBarHidden: state.ui.sessionBarHidden,
       });
     } catch (err) {
@@ -2396,6 +2399,17 @@
     await saveUiMeta();
   }
 
+  function applyPromptVisibility() {
+    document.body.classList.toggle('hide-prompts', !state.ui.showPrompts);
+    if (mobileKeyboard && mobileKeyboard.refresh) mobileKeyboard.refresh();
+  }
+
+  function togglePrompts() {
+    state.ui.showPrompts = !state.ui.showPrompts;
+    applyPromptVisibility();
+    saveUiMeta();
+  }
+
   function applyLanguageToUi() {
     I18n.setLanguage(state.ui.language);
     $('language-select').value = state.ui.language;
@@ -2412,6 +2426,7 @@
     renderLibraryBar();
     renderSympyControl();
     updateHistoryButtons();
+    applyPromptVisibility();
     if (mobileKeyboard && mobileKeyboard.refresh) mobileKeyboard.refresh();
     renderConsole();
     refreshInspector();
@@ -2448,7 +2463,9 @@
       },
       triggerSignature: () => {
         if (editor && editor.triggerSignature) editor.triggerSignature();
-      },      
+      },
+      showPrompts: () => state.ui.showPrompts,
+      togglePrompts: () => togglePrompts(),
       moveCursor: (direction) => editor.moveCursor && editor.moveCursor(direction),
       historyOrCursor: (direction) => {
         if (editor.moveHistoryOrCursor) editor.moveHistoryOrCursor(direction);
@@ -2869,6 +2886,7 @@
         numpyCols: state.ui.numpyCols,
         floatDigits: state.ui.floatDigits,
         hidePlotResult: state.ui.hidePlotResult,
+        showPrompts: state.ui.showPrompts,
       };
     },
     selectLibraries: async (ids) => {

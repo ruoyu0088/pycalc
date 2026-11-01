@@ -206,9 +206,9 @@ def test_mobile_keyboard() -> None:
         )
         assert browser.eval("!!document.querySelector('.mobile-keyboard')") is True
         assert browser.eval("document.body.classList.contains('mobile-keyboard-active')") is True
-        assert browser.eval("document.querySelectorAll('.mk-tab').length") == 7
+        assert browser.eval("document.querySelectorAll('.mk-tab').length") == 8
         assert browser.eval("[...document.querySelectorAll('.mk-tab')].map(x => x.textContent)") == [
-            "计算", "英文", "补全", "↑", "↓", "清空", "▼",
+            "计算", "英文", "补全", "[1]", "↑", "↓", "清空", "▼",
         ]
 
         assert browser.eval(
@@ -265,6 +265,19 @@ def test_mobile_keyboard() -> None:
         assert browser.eval("window.__pycalc.getEditorValue()") == ""
         assert browser.eval("document.activeElement.classList.contains('cm-content')") is True
         assert browser.eval("getComputedStyle(document.querySelector('.cm-cursor')).display") != "none"
+
+        assert browser.eval("document.querySelectorAll('.prompt-btn').length") >= 2
+        tap_keyboard(browser, "[1]")
+        time.sleep(0.2)
+        assert browser.eval("document.body.classList.contains('hide-prompts')") is True
+        assert browser.eval(
+            "[...document.querySelectorAll('.prompt-btn')]"
+            ".every(x => getComputedStyle(x).display === 'none')"
+        ) is True
+        tap_keyboard(browser, "[1]")
+        time.sleep(0.2)
+        assert browser.eval("document.body.classList.contains('hide-prompts')") is False
+        assert browser.eval("window.__pycalc.lastEntry().result") == "9"
 
         # Arrow buttons move the caret; at the first/last line they navigate
         # input history exactly like the physical ArrowUp/ArrowDown keys.
@@ -427,7 +440,7 @@ def test_mobile_keyboard() -> None:
         browser.eval("window.__pycalc.setLanguage('en')")
         time.sleep(0.2)
         assert browser.eval("[...document.querySelectorAll('.mk-tab')].map(x => x.textContent)") == [
-            "Calc", "English", "Comp", "↑", "↓", "Clear", "▼",
+            "Calc", "English", "Comp", "[1]", "↑", "↓", "Clear", "▼",
         ]
         browser.eval("window.__pycalc.setLanguage('zh')")
         time.sleep(0.2)

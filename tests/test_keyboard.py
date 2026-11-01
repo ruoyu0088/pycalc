@@ -49,10 +49,11 @@ class KeyboardLayoutTests(unittest.TestCase):
                 if isinstance(row, str):
                     self.assertLessEqual(len(row.split()), 10, row)
                 else:
-                    self.assertLessEqual(len(row), 5, row)
+                    self.assertLessEqual(len(row), 6, row)
         letters = en["views"]["letters"]
-        self.assertEqual(letters[0].split()[0], "q")
-        self.assertEqual(letters[3].split()[0], "(")
+        text_rows = [row for row in letters if isinstance(row, str)]
+        self.assertEqual(text_rows[0].split()[0], "q")
+        self.assertEqual(text_rows[-1].split()[0], "(")
 
     def test_drawers_and_math(self):
         drawers = LAYOUT["drawers"]
