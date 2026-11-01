@@ -580,6 +580,21 @@ def test_dataframe_summary() -> None:
             ".querySelectorAll('tbody tr:last-child td')].map(x => x.textContent)"
         )
         assert cells[-1] == "2.34567891", cells
+
+        browser.run_cell(
+            "wide = pd.DataFrame({f'c{i}': [i] for i in range(12)})\nwide"
+        )
+        browser.eval(
+            "window.__pycalc.setDisplaySettings({dataframeOutput: 'table',"
+            " dataframeRows: 20, dataframeCols: 5})"
+        )
+        time.sleep(0.2)
+        headers = browser.eval(
+            "[...[...document.querySelectorAll('.df-table')].at(-1)"
+            ".querySelectorAll('thead th')].map(x => x.textContent)"
+        )
+        assert headers.count("…") == 1, headers
+        assert headers[0] == "#", headers
     log("  PASS DataFrame summary")
 
 
@@ -855,6 +870,38 @@ def test_full_314() -> None:
         time.sleep(0.2)
         assert browser.eval("[...document.querySelectorAll('pre.result')].at(-1).textContent") == "[1, 2, 3]"
         browser.eval("window.__pycalc.setDisplaySettings({numpyOutput: 'default'})")
+
+        matrix = browser.run_cell(
+            "np.array([[-2.82998, -1.71821, 3.94834],"
+            " [-1.39422, -1.4325, 3.04898],"
+            " [0.151593, -0.869668, -0.0137923]])"
+        )
+        assert matrix["status"] == "ok" and matrix["images"] == 0, matrix
+        browser.eval(
+            "window.__pycalc.setDisplaySettings({numpyOutput: 'pretty', floatDigits: 6})"
+        )
+        pretty = browser.eval(
+            "[...document.querySelectorAll('pre.result')].at(-1).textContent"
+        )
+        assert pretty.startswith("[[-2.82998"), pretty
+        assert "\n [" in pretty, pretty
+        browser.eval(
+            "window.__pycalc.setDisplaySettings({numpyOutput: 'table',"
+            " numpyRows: 2, numpyCols: 2})"
+        )
+        time.sleep(0.2)
+        assert browser.eval("document.querySelectorAll('.np-table tbody tr').length") == 2
+        assert browser.eval("document.querySelectorAll('.np-table thead th').length") == 3
+        browser.run_cell("np.arange(24).reshape(2, 3, 4)")
+        time.sleep(0.2)
+        assert browser.eval("document.querySelectorAll('.np-tabs .np-tab').length") == 2
+        browser.eval("window.__pycalc.setDisplaySettings({numpyTabs: 1})")
+        time.sleep(0.2)
+        assert browser.eval("document.querySelectorAll('.np-tabs .np-tab').length") == 1
+        browser.eval(
+            "window.__pycalc.setDisplaySettings({numpyOutput: 'default',"
+            " numpyTabs: 5, numpyRows: 20, numpyCols: 10, floatDigits: 10})"
+        )
 
         run_and_check(
             browser,

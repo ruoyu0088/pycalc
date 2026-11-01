@@ -64,14 +64,19 @@ __PYCALC_KEYBOARD_CSS__
       <div class="display-body">
         <fieldset class="display-group">
           <legend data-i18n="display.sympy"></legend>
-          <label><input type="radio" name="sympy-output" value="text"> <span data-i18n="display.sympyText"></span></label>
-          <label><input type="radio" name="sympy-output" value="math"> <span data-i18n="display.sympyMath"></span></label>
-          <label><input type="radio" name="sympy-output" value="all"> <span data-i18n="display.sympyAll"></span></label>
+          <div class="display-options">
+            <label><input type="radio" name="sympy-output" value="text"> <span data-i18n="display.sympyText"></span></label>
+            <label><input type="radio" name="sympy-output" value="math"> <span data-i18n="display.sympyMath"></span></label>
+            <label><input type="radio" name="sympy-output" value="all"> <span data-i18n="display.sympyAll"></span></label>
+          </div>
         </fieldset>
         <fieldset class="display-group">
           <legend data-i18n="display.numpy"></legend>
-          <label><input type="radio" name="numpy-output" value="default"> <span data-i18n="display.numpyDefault"></span></label>
-          <label><input type="radio" name="numpy-output" value="pretty"> <span data-i18n="display.numpyPretty"></span></label>
+          <div class="display-options">
+            <label><input type="radio" name="numpy-output" value="default"> <span data-i18n="display.numpyDefault"></span></label>
+            <label><input type="radio" name="numpy-output" value="pretty"> <span data-i18n="display.numpyPretty"></span></label>
+            <label><input type="radio" name="numpy-output" value="table"> <span data-i18n="display.numpyTable"></span></label>
+          </div>
         </fieldset>
         <label class="display-row">
           <span data-i18n="display.floatPrecision"></span>
@@ -84,21 +89,48 @@ __PYCALC_KEYBOARD_CSS__
             <option value="15">15</option>
           </select>
         </label>
+        <div class="display-row display-limits">
+          <label><span data-i18n="display.maxTabs"></span>
+            <select id="display-numpy-tabs" class="compact-select">
+              <option value="2">2</option><option value="5">5</option>
+              <option value="8">8</option><option value="10">10</option>
+            </select>
+          </label>
+          <label><span data-i18n="display.maxRows"></span>
+            <select id="display-numpy-rows" class="compact-select">
+              <option value="10">10</option><option value="20">20</option>
+              <option value="50">50</option><option value="100">100</option>
+            </select>
+          </label>
+          <label><span data-i18n="display.maxColumns"></span>
+            <select id="display-numpy-cols" class="compact-select">
+              <option value="5">5</option><option value="10">10</option>
+              <option value="20">20</option><option value="50">50</option>
+            </select>
+          </label>
+        </div>
         <fieldset class="display-group">
           <legend data-i18n="display.dataframe"></legend>
-          <label><input type="radio" name="dataframe-output" value="text"> <span data-i18n="display.dataframeText"></span></label>
-          <label><input type="radio" name="dataframe-output" value="table"> <span data-i18n="display.dataframeTable"></span></label>
+          <div class="display-options">
+            <label><input type="radio" name="dataframe-output" value="text"> <span data-i18n="display.dataframeText"></span></label>
+            <label><input type="radio" name="dataframe-output" value="table"> <span data-i18n="display.dataframeTable"></span></label>
+          </div>
         </fieldset>
-        <label class="display-row">
-          <span data-i18n="display.tableRows"></span>
-          <select id="display-dataframe-rows" class="compact-select">
-            <option value="10">10</option>
-            <option value="20">20</option>
-            <option value="50">50</option>
-            <option value="100">100</option>
-            <option value="200">200</option>
-          </select>
-        </label>
+        <div class="display-row display-limits">
+          <label><span data-i18n="display.maxRows"></span>
+            <select id="display-dataframe-rows" class="compact-select">
+              <option value="10">10</option><option value="20">20</option>
+              <option value="50">50</option><option value="100">100</option>
+              <option value="200">200</option>
+            </select>
+          </label>
+          <label><span data-i18n="display.maxColumns"></span>
+            <select id="display-dataframe-cols" class="compact-select">
+              <option value="5">5</option><option value="10">10</option>
+              <option value="20">20</option><option value="50">50</option>
+            </select>
+          </label>
+        </div>
         <fieldset class="display-group">
           <legend data-i18n="display.matplotlib"></legend>
           <label class="display-check">

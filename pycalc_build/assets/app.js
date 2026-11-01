@@ -195,6 +195,10 @@
     numpyOutput: 'default',
     dataframeOutput: 'text',
     dataframeRows: 20,
+    dataframeCols: 10,
+    numpyTabs: 5,
+    numpyRows: 20,
+    numpyCols: 10,
     floatDigits: 10,
     hidePlotResult: false,
     sessionBarHidden: false,
@@ -731,9 +735,14 @@
       sidebarWidth: clampSidebarWidth(meta.sidebarWidth),
       sympyOutput: meta.sympyOutput === 'all'
         ? 'all' : meta.sympyOutput === 'math' ? 'math' : 'text',
-      numpyOutput: meta.numpyOutput === 'pretty' ? 'pretty' : 'default',
+      numpyOutput: meta.numpyOutput === 'pretty'
+        ? 'pretty' : meta.numpyOutput === 'table' ? 'table' : 'default',
       dataframeOutput: meta.dataframeOutput === 'table' ? 'table' : 'text',
       dataframeRows: Math.max(1, Math.min(200, Number(meta.dataframeRows) || 20)),
+      dataframeCols: Math.max(1, Math.min(50, Number(meta.dataframeCols) || 10)),
+      numpyTabs: Math.max(1, Math.min(20, Number(meta.numpyTabs) || 5)),
+      numpyRows: Math.max(1, Math.min(100, Number(meta.numpyRows) || 20)),
+      numpyCols: Math.max(1, Math.min(50, Number(meta.numpyCols) || 10)),
       floatDigits: meta.floatDigits === 'auto'
         ? 'auto'
         : [6, 8, 10, 12, 15].includes(Number(meta.floatDigits))
@@ -757,6 +766,10 @@
         numpyOutput: state.ui.numpyOutput,
         dataframeOutput: state.ui.dataframeOutput,
         dataframeRows: state.ui.dataframeRows,
+        dataframeCols: state.ui.dataframeCols,
+        numpyTabs: state.ui.numpyTabs,
+        numpyRows: state.ui.numpyRows,
+        numpyCols: state.ui.numpyCols,
         floatDigits: state.ui.floatDigits,
         hidePlotResult: state.ui.hidePlotResult,
         sessionBarHidden: state.ui.sessionBarHidden,
@@ -1679,7 +1692,112 @@
     return value === null || value === undefined ? '' : String(value);
   }
 
+  function pythonString(value) {
+    return "'" + String(value)
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .replace(/\n/g, '\\n')
+      .replace(/\r/g, '\\r') + "'";
+  }
+
+  function formatArrayCell(value, digits) {
+    if (typeof value === 'number') return formatTableCell(value, digits);
+    if (typeof value === 'string') return pythonString(value);
+    if (typeof value === 'boolean') return value ? 'True' : 'False';
+    if (value === null) return 'None';
+    return String(value);
+  }
+
+  function formatArrayPretty(array) {
+    if (!array || !Array.isArray(array.data)) return null;
+    const digits = state.ui.floatDigits;
+    if (array.shape.length === 1) {
+      return '[' + array.data.map((item) => formatArrayCell(item, digits)).join(', ') + ']';
+    }
+    if (array.shape.length !== 2) return null;
+    const rows = array.data;
+    if (!rows.length) return '[]';
+    const tokens = rows.map((row) => row.map((item) => formatArrayCell(item, digits)));
+    const widths = [];
+    for (let col = 0; col < (tokens[0] || []).length; col += 1) {
+      widths[col] = Math.max(...tokens.map((row) => (row[col] || '').length));
+    }
+    return tokens.map((row, index) => {
+      const cells = row.map((text, col) => {
+        const numeric = typeof rows[index][col] === 'number';
+        return numeric ? text.padStart(widths[col]) : text.padEnd(widths[col]);
+      });
+      const prefix = index === 0 ? '[[' : ' [';
+      const suffix = index === tokens.length - 1 ? ']]' : '],';
+      return prefix + cells.join(', ') + suffix;
+    }).join('\n');
+  }
+
+  function numpyArrayTable(data, maxRows, maxCols) {
+    const rows = data.slice(0, maxRows);
+    const colCount = Math.min(data[0]?.length || 0, maxCols);
+    const wrap = el('div', 'np-table-wrap');
+    const table = document.createElement('table');
+    table.className = 'np-table';
+    const head = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    headRow.appendChild(el('th', '', ''));
+    for (let col = 0; col < colCount; col += 1) headRow.appendChild(el('th', '', `[${col}]`));
+    head.appendChild(headRow);
+    table.appendChild(head);
+    const body = document.createElement('tbody');
+    rows.forEach((row, rowIndex) => {
+      const tr = document.createElement('tr');
+      tr.appendChild(el('td', '', `[${rowIndex}]`));
+      for (let col = 0; col < colCount; col += 1) {
+        tr.appendChild(el('td', '', formatArrayCell(row[col], state.ui.floatDigits)));
+      }
+      body.appendChild(tr);
+    });
+    table.appendChild(body);
+    wrap.appendChild(table);
+    return wrap;
+  }
+
+  function numpyTable(array) {
+    if (!array || !Array.isArray(array.shape)) return null;
+    const maxRows = state.ui.numpyRows;
+    const maxCols = state.ui.numpyCols;
+    if (array.shape.length === 2) {
+      return numpyArrayTable(array.data, maxRows, maxCols);
+    }
+    if (array.shape.length !== 3) return null;
+    const wrap = el('div', 'np-array-table');
+    const tabs = el('div', 'np-tabs');
+    const body = el('div', 'np-tab-body');
+    const count = Math.min(array.data.length, state.ui.numpyTabs);
+    const show = (index) => {
+      body.innerHTML = '';
+      body.appendChild(numpyArrayTable(array.data[index], maxRows, maxCols));
+      for (const tab of tabs.querySelectorAll('.np-tab')) {
+        tab.classList.toggle('active', Number(tab.dataset.index) === index);
+      }
+    };
+    for (let index = 0; index < count; index += 1) {
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'np-tab';
+      tab.dataset.index = String(index);
+      tab.textContent = `[${index}]`;
+      tab.addEventListener('click', () => show(index));
+      tabs.appendChild(tab);
+    }
+    wrap.appendChild(tabs);
+    wrap.appendChild(body);
+    if (count) show(0);
+    return wrap;
+  }
+
   function entryResultText(entry) {
+    if (state.ui.numpyOutput === 'pretty' && entry.resultArray) {
+      const pretty = formatArrayPretty(entry.resultArray);
+      if (pretty) return pretty;
+    }
     const digits = state.ui.floatDigits;
     if (digits !== 'auto' && entry.resultNumbers) {
       return formatNumberTree(entry.resultNumbers, digits, state.ui.numpyOutput === 'pretty');
@@ -1692,10 +1810,30 @@
     const wrap = el('div', 'df-table-wrap');
     const node = document.createElement('table');
     node.className = 'df-table';
+    const allColumns = table.columns || [];
+    const maxCols = state.ui.dataframeCols;
+    let indices = allColumns.map((_, index) => index);
+    let ellipsisAt = -1;
+    if (allColumns.length > maxCols) {
+      const headCount = Math.ceil(maxCols / 2);
+      const tailCount = Math.floor(maxCols / 2);
+      indices = [
+        ...Array.from({ length: headCount }, (_, index) => index),
+        ...Array.from(
+          { length: tailCount },
+          (_, index) => allColumns.length - tailCount + index,
+        ),
+      ];
+      ellipsisAt = headCount;
+    }
     const head = document.createElement('thead');
     const headRow = document.createElement('tr');
     if (Array.isArray(table.index)) headRow.appendChild(el('th', '', '#'));
-    for (const column of table.columns || []) headRow.appendChild(el('th', '', String(column)));
+    indices.forEach((index, position) => {
+      if (position === ellipsisAt) headRow.appendChild(el('th', 'df-ellipsis', '…'));
+      headRow.appendChild(el('th', '', String(allColumns[index])));
+    });
+    if (ellipsisAt === indices.length) headRow.appendChild(el('th', 'df-ellipsis', '…'));
     head.appendChild(headRow);
     node.appendChild(head);
     const body = document.createElement('tbody');
@@ -1704,12 +1842,15 @@
       if (Array.isArray(table.index)) {
         tr.appendChild(el('td', 'df-index', String(table.index[row] ?? '')));
       }
-      for (const value of table.rows[row] || []) {
+      indices.forEach((index, position) => {
+        if (position === ellipsisAt) tr.appendChild(el('td', 'df-ellipsis', '…'));
+        const value = (table.rows[row] || [])[index];
         const text = formatTableCell(value, state.ui.floatDigits);
         const td = el('td', '', text);
         td.title = text;
         tr.appendChild(td);
-      }
+      });
+      if (ellipsisAt === indices.length) tr.appendChild(el('td', 'df-ellipsis', '…'));
       body.appendChild(tr);
     }
     node.appendChild(body);
@@ -1742,6 +1883,14 @@
       if (!hideResult && entry.result !== null && entry.result !== undefined) {
         if (state.ui.dataframeOutput === 'table' && entry.resultTable) {
           body.appendChild(dataframeTable(entry.resultTable));
+        } else if (
+          state.ui.numpyOutput === 'table'
+          && entry.resultArray
+          && (entry.resultArray.shape.length === 2 || entry.resultArray.shape.length === 3)
+        ) {
+          const table = numpyTable(entry.resultArray);
+          if (table) body.appendChild(table);
+          else body.appendChild(el('pre', 'result', entryResultText(entry)));
         } else {
           let math = null;
           if (state.ui.sympyOutput === 'all') {
@@ -1989,6 +2138,7 @@
       resultPretty: null,
       resultTable: null,
       resultNumbers: null,
+      resultArray: null,
       error: null,
       images: [],
     };
@@ -2013,6 +2163,7 @@
       entry.resultPretty = result.ok ? (result.resultPretty || null) : null;
       entry.resultTable = result.ok ? (result.resultTable || null) : null;
       entry.resultNumbers = result.ok ? (result.resultNumbers || null) : null;
+      entry.resultArray = result.ok ? (result.resultArray || null) : null;
       entry.error = result.ok ? null : result.error;
       try {
         const images = JSON.parse(await py.figures());
@@ -2105,6 +2256,14 @@
     setRadio('dataframe-output', state.ui.dataframeOutput);
     const rows = $('display-dataframe-rows');
     if (rows) rows.value = String(state.ui.dataframeRows);
+    const cols = $('display-dataframe-cols');
+    if (cols) cols.value = String(state.ui.dataframeCols);
+    const tabs = $('display-numpy-tabs');
+    if (tabs) tabs.value = String(state.ui.numpyTabs);
+    const npRows = $('display-numpy-rows');
+    if (npRows) npRows.value = String(state.ui.numpyRows);
+    const npCols = $('display-numpy-cols');
+    if (npCols) npCols.value = String(state.ui.numpyCols);
     const floatDigits = $('display-float-digits');
     if (floatDigits) floatDigits.value = String(state.ui.floatDigits);
     const hide = $('display-hide-plot');
@@ -2140,6 +2299,18 @@
     state.ui.dataframeOutput = checked('dataframe-output', 'text');
     state.ui.dataframeRows = Math.max(
       1, Math.min(200, Number($('display-dataframe-rows')?.value) || 20)
+    );
+    state.ui.dataframeCols = Math.max(
+      1, Math.min(50, Number($('display-dataframe-cols')?.value) || 10)
+    );
+    state.ui.numpyTabs = Math.max(
+      1, Math.min(20, Number($('display-numpy-tabs')?.value) || 5)
+    );
+    state.ui.numpyRows = Math.max(
+      1, Math.min(100, Number($('display-numpy-rows')?.value) || 20)
+    );
+    state.ui.numpyCols = Math.max(
+      1, Math.min(50, Number($('display-numpy-cols')?.value) || 10)
     );
     const floatDigits = $('display-float-digits')?.value;
     state.ui.floatDigits = floatDigits === 'auto'
@@ -2630,7 +2801,7 @@
       if (['text', 'math', 'all'].includes(next.sympyOutput)) {
         state.ui.sympyOutput = next.sympyOutput;
       }
-      if (['default', 'pretty'].includes(next.numpyOutput)) {
+      if (['default', 'pretty', 'table'].includes(next.numpyOutput)) {
         state.ui.numpyOutput = next.numpyOutput;
       }
       if (['text', 'table'].includes(next.dataframeOutput)) {
@@ -2638,6 +2809,18 @@
       }
       if (next.dataframeRows !== undefined) {
         state.ui.dataframeRows = Math.max(1, Math.min(200, Number(next.dataframeRows) || 20));
+      }
+      if (next.dataframeCols !== undefined) {
+        state.ui.dataframeCols = Math.max(1, Math.min(50, Number(next.dataframeCols) || 10));
+      }
+      if (next.numpyTabs !== undefined) {
+        state.ui.numpyTabs = Math.max(1, Math.min(20, Number(next.numpyTabs) || 5));
+      }
+      if (next.numpyRows !== undefined) {
+        state.ui.numpyRows = Math.max(1, Math.min(100, Number(next.numpyRows) || 20));
+      }
+      if (next.numpyCols !== undefined) {
+        state.ui.numpyCols = Math.max(1, Math.min(50, Number(next.numpyCols) || 10));
       }
       if (next.floatDigits === 'auto') {
         state.ui.floatDigits = 'auto';
@@ -2655,6 +2838,10 @@
         numpyOutput: state.ui.numpyOutput,
         dataframeOutput: state.ui.dataframeOutput,
         dataframeRows: state.ui.dataframeRows,
+        dataframeCols: state.ui.dataframeCols,
+        numpyTabs: state.ui.numpyTabs,
+        numpyRows: state.ui.numpyRows,
+        numpyCols: state.ui.numpyCols,
         floatDigits: state.ui.floatDigits,
         hidePlotResult: state.ui.hidePlotResult,
       };

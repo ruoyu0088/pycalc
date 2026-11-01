@@ -901,6 +901,39 @@ def _pycalc_number_tree(value, depth=0):
     return {"kind": "text", "text": _pycalc_truncate(repr(value))}
 
 
+def _pycalc_array_info(value):
+    try:
+        import numpy as np
+        if not isinstance(value, np.ndarray):
+            return None
+        if value.ndim not in (1, 2, 3) or value.size > 5000:
+            return None
+        if value.dtype.kind not in "biufcUS":
+            return None
+
+        def cell(item):
+            if isinstance(item, (bool, int, str)):
+                return item
+            if isinstance(item, float):
+                return item if math.isfinite(item) else str(item)
+            if isinstance(item, complex):
+                return repr(item)
+            return str(item)
+
+        def convert(data):
+            if isinstance(data, list):
+                return [convert(item) for item in data]
+            return cell(data)
+
+        return {
+            "shape": [int(part) for part in value.shape],
+            "dtype": str(value.dtype),
+            "data": convert(value.tolist()),
+        }
+    except Exception:
+        return None
+
+
 def _pycalc_has_sympy(value, depth=0):
     if str(type(value).__module__).startswith("sympy"):
         return True
@@ -1012,7 +1045,7 @@ def _pycalc_dataframe_table(value, row_limit=20):
     if not _pycalc_is_dataframe(value):
         return None
     limit = max(1, min(200, int(row_limit or 20)))
-    max_columns = 50
+    max_columns = 100
     try:
         all_columns = list(value.columns)
         columns = all_columns[:max_columns]
@@ -1087,6 +1120,7 @@ def _pycalc_run(code, display_json="{}"):
         result_pretty = None
         result_table = None
         result_numbers = None
+        result_array = None
         if tree.body and isinstance(tree.body[-1], ast.Expr):
             body = ast.Module(body=tree.body[:-1], type_ignores=[])
             if body.body:
@@ -1099,6 +1133,12 @@ def _pycalc_run(code, display_json="{}"):
                 result_mathml, result_latex = _pycalc_sympy_math(value)
                 if _pycalc_has_numpy(value):
                     result_pretty = _pycalc_pretty_repr(value)
+                try:
+                    import numpy as _np
+                    if isinstance(value, _np.ndarray):
+                        result_array = _pycalc_array_info(value)
+                except Exception:
+                    pass
                 if _pycalc_is_dataframe(value):
                     result_table = _pycalc_dataframe_table(value, dataframe_rows)
                 elif _pycalc_has_floating(value):
@@ -1120,6 +1160,7 @@ def _pycalc_run(code, display_json="{}"):
                 "resultPretty": result_pretty,
                 "resultTable": result_table,
                 "resultNumbers": result_numbers,
+                "resultArray": result_array,
             },
             ensure_ascii=False,
         )
