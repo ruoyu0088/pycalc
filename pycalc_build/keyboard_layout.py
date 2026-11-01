@@ -293,50 +293,83 @@ LAYOUT = {
             {"label": "pinv", "insert": "?pinv("},
         ],
         "sympy": [
-            {"label": "sp", "insert": "sp"},
-            {"label": "symbols", "insert": "?symbols("},
-            {"label": "symbol", "insert": "?symbol("},
-            {"label": "expand", "insert": "?.expand("},
-            {"label": "factor", "insert": "?.factor("},
-            {"label": "simplify", "insert": "?.simplify("},
-            {"label": "solve", "insert": "?solve("},
-            {"label": "diff", "insert": "?diff("},
-            {"label": "integrate", "insert": "?integrate("},
-            {"label": "limit", "insert": "?limit("},
+            # Module alias
+            {"label": "sp",        "insert": "sp"},
+
+            # Symbol definition
+            {"label": "symbols",   "insert": "?symbols("},
+            {"label": "var",       "insert": "?var("},
+
+            # Simplification and rewriting
+            {"label": "simplify",  "insert": "?.simplify("},
+            {"label": "expand",    "insert": "?.expand("},
+            {"label": "factor",    "insert": "?.factor("},
+            {"label": "together",  "insert": "?.together("},   # combine fractions
+            {"label": "cancel",    "insert": "?.cancel("},     # cancel common factors
+            {"label": "trigsimp",  "insert": "?.trigsimp("},   # trig identities
+
+            # Calculus
+            {"label": "diff",      "insert": "?.diff("},
+            {"label": "integrate", "insert": "?.integrate("},
+            {"label": "limit",     "insert": "?limit("},
+            {"label": "series",    "insert": "?.series("},     # Taylor / Laurent expansion
             {"label": "summation", "insert": "?summation("},
-            {"label": "Matrix", "insert": "?Matrix("},
-            {"label": "Eq", "insert": "?Eq("},
-            {"label": "latex", "insert": "?latex("},
-            {"label": "Integral", "insert": "?Integral("},
-            {"label": "subs", "insert": ".subs("},
-            {"label": "evalf", "insert": ".evalf("},
-            {"label": "doit", "insert": ".doit("},
-            {"label": "pi", "insert": "pi"},
-            {"label": "oo", "insert": "?oo"},
-        ],
+            {"label": "dsolve",    "insert": "?dsolve("},      # ordinary differential equations
+
+            # Equation solving
+            {"label": "solve",     "insert": "?solve("},
+            {"label": "nsolve",    "insert": "?nsolve("},      # numerical root finding
+            {"label": "Eq",        "insert": "?Eq("},
+
+            # Linear algebra
+            {"label": "Matrix",    "insert": "?Matrix("},
+
+            # Evaluation and output
+            {"label": "subs",      "insert": ".subs("},
+            {"label": "evalf",     "insert": ".evalf("},
+            {"label": "latex",     "insert": "?latex("},
+
+            # Constants
+            {"label": "pi",        "insert": "?pi"},
+            {"label": "oo",        "insert": "?oo"},
+        ],      
         "matplotlib.pyplot": [
-            {"label": "plt", "insert": "plt"},
-            {"label": "fig", "insert": "fig"},
-            {"label": "ax", "insert": "ax"},
-            {"label": "plot", "insert": "?plot("},
-            {"label": "scatter", "insert": "?scatter("},
-            {"label": "bar", "insert": "?bar("},
-            {"label": "hist", "insert": "?hist("},
-            {"label": "imshow", "insert": "?imshow("},
-            {"label": "figure", "insert": "?figure("},
-            {"label": "subplots", "insert": "?subplots("},
-            {"label": "title", "insert": "?title("},
-            {"label": "xlabel", "insert": "?xlabel("},
-            {"label": "ylabel", "insert": "?ylabel("},
-            {"label": "legend", "insert": "?.legend("},
-            {"label": "grid", "insert": "?grid("},
-            {"label": "tight_layout", "insert": "?tight_layout("},
-            {"label": "set_title", "insert": ".set_title("},
-            {"label": "set_xlabel", "insert": ".set_xlabel("},
-            {"label": "set_ylabel", "insert": ".set_ylabel("},
-            {"label": "set_xlim", "insert": ".set_xlim("},
-            {"label": "set_ylim", "insert": ".set_ylim("},
-            {"label": "3D Axe", "insert": "?figure().add_subplot(projection='3d')"},
+            # Module alias
+            {"label": "plt",          "insert": "plt"},
+
+            # Figure and axes
+            {"label": "figure",       "insert": "?figure("},
+            {"label": "subplots",     "insert": "?subplots("},
+            {"label": "fig",          "insert": "fig"},
+            {"label": "ax",           "insert": "ax"},
+            {"label": "3D",           "insert": "?subplot(projection='3d')"},
+
+            # Basic plots
+            {"label": "plot",         "insert": "?plot("},
+            {"label": "scatter",      "insert": "?scatter("},
+            {"label": "bar",          "insert": "?bar("},
+            {"label": "hist",         "insert": "?hist("},
+            {"label": "imshow",       "insert": "?imshow("},
+
+            # Statistical and error plots
+            {"label": "errorbar",     "insert": "?errorbar("},     # error bars
+            {"label": "fill_between", "insert": "?fill_between("}, # confidence bands
+
+            # Scale and 2D field plots
+            {"label": "semilogx",     "insert": "?semilogx("},     # log X axis
+            {"label": "semilogy",     "insert": "?semilogy("},     # log Y axis
+            {"label": "loglog",       "insert": "?loglog("},       # log-log
+            {"label": "contourf",     "insert": "?contourf("},     # filled contours
+            {"label": "colorbar",     "insert": "?colorbar("},     # color scale
+
+            # Axis limits, ticks, annotations
+            {"label": "xlim",         "insert": "?xlim("},
+            {"label": "ylim",         "insert": "?ylim("},
+
+            # Layout and display
+            {"label": "legend",       "insert": "?.legend("},
+            {"label": "grid",         "insert": "?grid("},
+            {"label": "twinx",        "insert": "?twinx("},        # second Y axis
         ],
         "pandas": [
             {"label": "pd", "insert": "pd"},
@@ -368,28 +401,53 @@ LAYOUT = {
             {"label": "mean", "insert": ".mean("},
         ],
         "polars": [
-            {"label": "pl", "insert": "pl"},
-            {"label": "DataFrame", "insert": "?DataFrame("},
-            {"label": "Series", "insert": "?Series("},
-            {"label": "read_csv", "insert": "?read_csv("},
-            {"label": "read_parquet", "insert": "?read_parquet("},
-            {"label": "concat", "insert": "?concat("},
-            {"label": "col", "insert": "?col("},
-            {"label": "lit", "insert": "?lit("},
-            {"label": "when", "insert": "?when("},
-            {"label": "select", "insert": ".select("},
-            {"label": "filter", "insert": ".filter("},
+            # Module alias
+            {"label": "pl",           "insert": "pl"},
+
+            # Constructors
+            {"label": "DataFrame",    "insert": "?DataFrame("},
+
+            # Eager I/O
+            {"label": "read_csv",     "insert": "?read_csv("},
+
+            # Expression helpers
+            {"label": "col",          "insert": "?col("},
+            {"label": "lit",          "insert": "?lit("},
+            {"label": "when",         "insert": "?when("},
+            {"label": "len",          "insert": "?len("},
+
+            # Frame operations
+            {"label": "concat",       "insert": "?concat("},
+            {"label": "select",       "insert": ".select("},
+            {"label": "filter",       "insert": ".filter("},
             {"label": "with_columns", "insert": ".with_columns("},
-            {"label": "group_by", "insert": ".group_by("},
-            {"label": "sort", "insert": ".sort("},
-            {"label": "head", "insert": ".head("},
-            {"label": "to_pandas", "insert": ".to_pandas("},
-            {"label": "describe", "insert": ".describe("},
-            {"label": "unique", "insert": ".unique("},
-            {"label": "join", "insert": ".join("},
-            {"label": "cast", "insert": ".cast("},
-            {"label": "explode", "insert": ".explode("},
-            {"label": "rename", "insert": ".rename("},
+            {"label": "group_by",     "insert": ".group_by("},
+            {"label": "agg",          "insert": ".agg("},
+            {"label": "sort",         "insert": ".sort("},
+
+            # Row inspection
+            {"label": "head",         "insert": ".head("},
+            {"label": "tail",         "insert": ".tail("},
+            {"label": "describe",     "insert": ".describe("},
+            {"label": "value_counts", "insert": ".value_counts("},
+            {"label": "n_unique",     "insert": ".n_unique("},
+            {"label": "unique",       "insert": ".unique("},
+
+            # Data cleaning
+            {"label": "drop_nulls",   "insert": ".drop_nulls("},
+            {"label": "fill_null",    "insert": ".fill_null("},
+
+            # Joins and reshaping
+            {"label": "join",         "insert": ".join("},
+            {"label": "explode",      "insert": ".explode("},
+            {"label": "rename",       "insert": ".rename("},
+            {"label": "cast",         "insert": ".cast("},
+
+            # Window / transforms
+            {"label": "over",         "insert": ".over("},          # window function
+            {"label": "shift",        "insert": ".shift("},
+            {"label": "diff",         "insert": ".diff("},
+            {"label": "cum_sum",      "insert": ".cum_sum("},
         ],
     },
 }
