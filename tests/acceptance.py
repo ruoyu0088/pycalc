@@ -544,6 +544,19 @@ def test_dataframe_summary() -> None:
             assert "shape=(2, 3)" in value, (name, value)
             assert "columns=['alpha', 'beta', 'gamma']" in value, (name, value)
             assert "\n" not in value and "0  1  2" not in value, (name, value)
+        pdf_result = browser.run_cell("pdf")
+        table = browser.eval("window.__pycalc.lastEntry().resultTable")
+        assert table and table["totalRows"] == 2 and table["columns"] == ["alpha", "beta", "gamma"], table
+        browser.eval("window.__pycalc.setDisplaySettings({dataframeOutput: 'table'})")
+        time.sleep(0.2)
+        assert browser.eval("document.querySelectorAll('.df-table tbody tr').length") == 2
+        browser.eval("window.__pycalc.setDisplaySettings({dataframeRows: 1, dataframeOutput: 'table'})")
+        one_row = browser.run_cell("pdf")
+        assert one_row["status"] == "ok"
+        assert browser.eval("window.__pycalc.lastEntry().resultTable.rows.length") == 1
+        assert browser.eval("document.querySelectorAll('.df-table tbody tr').length") == 3
+        browser.eval("window.__pycalc.setDisplaySettings({dataframeOutput: 'text'})")
+        assert browser.eval("document.querySelectorAll('.df-table').length") == 0
     log("  PASS DataFrame summary")
 
 
@@ -557,7 +570,7 @@ def test_minimal_314() -> None:
         version = browser.eval("window.__pycalcVersion")
         assert version["pyodide"] == "314.0.7" and version["python"] == "3.14.2", version
         assert browser.eval("window.__pycalc.engine()") == "cloudpickle"
-        assert browser.eval("document.getElementById('sympy-output-toggle').classList.contains('hidden')")
+        assert browser.eval("!document.getElementById('display-settings').classList.contains('hidden')")
         assert browser.eval("document.getElementById('engine-badge') === null")
         assert browser.eval("document.querySelectorAll('.lib-chip').length") == 0
         run_and_check(browser, "print(1 + 1)", "2\n")
@@ -758,7 +771,7 @@ def test_full_314() -> None:
             "import sympy as sp\nx = sp.symbols('x')\nprint(sp.integrate(x**2, x))",
             "x**3/3\n",
         )
-        assert browser.eval("!document.getElementById('sympy-output-toggle').classList.contains('hidden')")
+        assert browser.eval("!document.getElementById('display-settings').classList.contains('hidden')")
         sympy_result = browser.run_cell("sp.integrate(x**2, x)")
         assert sympy_result["result"] == "x**3/3", sympy_result
         entry = browser.eval("window.__pycalc.lastEntry()")
@@ -769,8 +782,6 @@ def test_full_314() -> None:
         time.sleep(0.2)
         assert browser.eval("document.querySelectorAll('pre.result').length") == 0
         assert browser.eval("document.querySelectorAll('.math-result math').length") == 1
-        assert browser.eval("document.getElementById('sympy-output-toggle').textContent") == "∑"
-        assert browser.eval("document.getElementById('sympy-output-toggle').getAttribute('aria-pressed')") == "true"
 
         # &InvisibleTimes; is a MathML named entity that the XML parser
         # rejects; this expression must still render as math, not fall back.
@@ -778,11 +789,34 @@ def test_full_314() -> None:
         assert expand["result"] == "x**3 + 3*x**2*y + 3*x*y**2 + y**3", expand
         assert "&InvisibleTimes;" in browser.eval("window.__pycalc.lastEntry().resultMathML")
         assert browser.eval("document.querySelectorAll('.math-result math').length") == 2
+
+        # All-math mode also renders containers containing SymPy expressions.
+        container = browser.run_cell("container = [x**2, sp.sin(y)]\ncontainer")
+        assert "<math" in browser.eval("window.__pycalc.lastEntry().resultMathMLAll")
+        browser.eval("window.__pycalc.setSympyOutput('all')")
+        time.sleep(0.2)
+        assert browser.eval("document.querySelectorAll('.math-result math').length") >= 3
         browser.screenshot(ART / "math-mode.png")
         browser.eval("window.__pycalc.setSympyOutput('text')")
         time.sleep(0.2)
-        assert browser.eval("document.querySelectorAll('pre.result').length") == 2
-        assert browser.eval("document.getElementById('sympy-output-toggle').textContent") == "T"
+        assert browser.eval("document.querySelectorAll('pre.result').length") == 3
+
+        # The gear opens the full display-settings dialog.
+        browser.eval("document.getElementById('display-settings').click()")
+        time.sleep(0.2)
+        assert browser.eval("!document.getElementById('display-dialog').classList.contains('hidden')")
+        assert browser.eval(
+            "document.querySelector('input[name=sympy-output]:checked').value"
+        ) == "text"
+        browser.eval("document.getElementById('display-close').click()")
+
+        # NumPy pretty mode hides array()/np.float64() wrappers.
+        array_result = browser.run_cell("import numpy as np\nnp.array([1, 2, 3])")
+        assert array_result["result"].startswith("array(")
+        browser.eval("window.__pycalc.setDisplaySettings({numpyOutput: 'pretty'})")
+        time.sleep(0.2)
+        assert browser.eval("[...document.querySelectorAll('pre.result')].at(-1).textContent") == "[1, 2, 3]"
+        browser.eval("window.__pycalc.setDisplaySettings({numpyOutput: 'default'})")
 
         run_and_check(
             browser,
@@ -799,6 +833,15 @@ def test_full_314() -> None:
         assert result["status"] == "ok", result
         assert result["images"] == 1, result
         assert browser.eval("document.querySelectorAll('#console img').length") >= 1
+        plot_expr = browser.run_cell("plt.figure(figsize=(2, 1))\nplt.plot([1, 2, 3])")
+        assert plot_expr["status"] == "ok" and plot_expr["images"] == 1, plot_expr
+        assert plot_expr["result"].startswith("[<matplotlib"), plot_expr
+        before = browser.eval("document.querySelectorAll('pre.result').length")
+        browser.eval("window.__pycalc.setDisplaySettings({hidePlotResult: true})")
+        time.sleep(0.2)
+        after = browser.eval("document.querySelectorAll('pre.result').length")
+        assert after == before - 1, (before, after)
+        browser.eval("window.__pycalc.setDisplaySettings({hidePlotResult: false})")
         assert_no_network(browser)
         browser.screenshot(ART / "full314.png")
     log("  PASS full 314")
@@ -1204,15 +1247,20 @@ def test_new_features() -> None:
         browser.eval("window.__pycalc.setTheme('light')")
         browser.eval("window.__pycalc.setRunKey('enter')")
         browser.eval("window.__pycalc.setSympyOutput('math')")
+        browser.eval(
+            "window.__pycalc.setDisplaySettings({numpyOutput: 'pretty',"
+            " dataframeOutput: 'table', dataframeRows: 50, hidePlotResult: true})"
+        )
         browser.eval("new Promise(resolve => setTimeout(resolve, 400))")
         browser.call("Page.reload", {"ignoreCache": True})
         browser.wait_ready(timeout=180)
         ui = browser.eval("window.__pycalc.ui()")
         assert ui["language"] == "en" and ui["theme"] == "light" and ui["runKey"] == "enter", ui
         assert ui["sympyOutput"] == "math", ui
+        assert ui["numpyOutput"] == "pretty" and ui["dataframeOutput"] == "table", ui
+        assert ui["dataframeRows"] == 50 and ui["hidePlotResult"] is True, ui
         assert abs(float(ui["sidebarWidth"]) - width_after) < 2, (ui, width_after)
         assert browser.eval("document.querySelector('.side-card h3').textContent") == "Variables"
-        assert browser.eval("document.getElementById('sympy-output-toggle').getAttribute('aria-pressed')") == "true"
         assert browser.eval("document.querySelectorAll('.math-result math').length") >= 1
         assert browser.eval("document.documentElement.dataset.theme") == "light"
         assert browser.eval("window.__pycalc.active()")["libraries"] == ["sympy"]

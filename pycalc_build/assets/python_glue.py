@@ -12,6 +12,7 @@ import importlib
 import inspect
 import io
 import json
+import math
 import os
 import reprlib
 import sys
@@ -473,17 +474,21 @@ def _pycalc_safe_repr(value):
     return text
 
 
-def _pycalc_dataframe_summary(value):
-    """Return a compact shape/columns summary for pandas/polars DataFrames."""
+def _pycalc_is_dataframe(value):
     cls = type(value)
     module = str(getattr(cls, "__module__", ""))
     name = str(getattr(cls, "__qualname__", ""))
-    if name != "DataFrame" or not (
+    return name == "DataFrame" and (
         module == "pandas"
         or module.startswith("pandas.")
         or module == "polars"
         or module.startswith("polars.")
-    ):
+    )
+
+
+def _pycalc_dataframe_summary(value):
+    """Return a compact shape/columns summary for pandas/polars DataFrames."""
+    if not _pycalc_is_dataframe(value):
         return None
     try:
         shape = tuple(int(part) for part in value.shape)
@@ -759,6 +764,190 @@ def _pycalc_truncate(text):
     return text[:_PYCALC_MAX_RESULT] + f"\n... ({omitted} characters omitted)"
 
 
+def _pycalc_is_numpy(value):
+    return str(type(value).__module__).startswith("numpy")
+
+
+def _pycalc_has_numpy(value, depth=0):
+    if _pycalc_is_numpy(value):
+        return True
+    if depth > 4:
+        return False
+    if isinstance(value, dict):
+        return any(
+            _pycalc_has_numpy(key, depth + 1)
+            or _pycalc_has_numpy(item, depth + 1)
+            for key, item in list(value.items())[:100]
+        )
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return any(_pycalc_has_numpy(item, depth + 1) for item in list(value)[:100])
+    return False
+
+
+def _pycalc_pretty_repr(value, depth=0):
+    """NumPy values without the array()/np.float64() wrappers."""
+    if _pycalc_is_numpy(value):
+        try:
+            import numpy as np
+
+            if isinstance(value, np.ndarray):
+                if value.size > 10000:
+                    return _pycalc_truncate(repr(value))
+                item = value.item() if value.ndim == 0 else value.tolist()
+                return _pycalc_truncate(repr(item))
+            if hasattr(value, "item"):
+                return _pycalc_truncate(repr(value.item()))
+        except Exception:
+            return _pycalc_truncate(repr(value))
+    if depth > 4:
+        return _pycalc_truncate(repr(value))
+    if isinstance(value, list):
+        return "[" + ", ".join(_pycalc_pretty_repr(item, depth + 1) for item in value[:1000]) + "]"
+    if isinstance(value, tuple):
+        parts = [_pycalc_pretty_repr(item, depth + 1) for item in value[:1000]]
+        if len(parts) == 1:
+            return f"({parts[0]},)"
+        return "(" + ", ".join(parts) + ")"
+    if isinstance(value, dict):
+        return "{" + ", ".join(
+            f"{_pycalc_pretty_repr(key, depth + 1)}: {_pycalc_pretty_repr(item, depth + 1)}"
+            for key, item in list(value.items())[:200]
+        ) + "}"
+    if isinstance(value, (set, frozenset)):
+        return "{" + ", ".join(_pycalc_pretty_repr(item, depth + 1) for item in list(value)[:200]) + "}"
+    return _pycalc_truncate(repr(value))
+
+
+def _pycalc_has_sympy(value, depth=0):
+    if str(type(value).__module__).startswith("sympy"):
+        return True
+    if depth > 4:
+        return False
+    if isinstance(value, dict):
+        return any(
+            _pycalc_has_sympy(key, depth + 1) or _pycalc_has_sympy(item, depth + 1)
+            for key, item in list(value.items())[:100]
+        )
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return any(_pycalc_has_sympy(item, depth + 1) for item in list(value)[:100])
+    return False
+
+
+def _pycalc_math_all(value):
+    """Render a container containing SymPy expressions as one MathML tree."""
+    try:
+        from sympy.printing.mathml import mathml as mathml_printer
+        from xml.sax.saxutils import escape
+    except Exception:
+        return None
+
+    def sympy_inner(item):
+        markup = str(mathml_printer(item, printer="presentation")).strip()
+        if markup.startswith("<math"):
+            start = markup.find(">")
+            end = markup.rfind("</math>")
+            if start >= 0 and end > start:
+                markup = markup[start + 1:end]
+        return markup
+
+    def node(item, level=0):
+        if str(type(item).__module__).startswith("sympy"):
+            return sympy_inner(item)
+        if level < 5 and isinstance(item, (list, tuple, dict, set, frozenset)):
+            return container(item, level + 1)
+        text = escape(repr(item)[:240])
+        return f"<mtext>{text}</mtext>"
+
+    def sequence(items, opening, closing, separator, level):
+        parts = [node(item, level) for item in list(items)[:80]]
+        if len(list(items)) > 80:
+            parts.append("<mtext>…</mtext>")
+        return (
+            "<mrow><mo>" + opening + "</mo>"
+            + f"<mo>{separator}</mo>".join(parts)
+            + "<mo>" + closing + "</mo></mrow>"
+        )
+
+    def container(item, level=0):
+        if isinstance(item, dict):
+            parts = []
+            for key, value in list(item.items())[:60]:
+                parts.append(node(key, level) + "<mo>:</mo>" + node(value, level))
+            if len(item) > 60:
+                parts.append("<mtext>…</mtext>")
+            return (
+                "<mrow><mo>{</mo>"
+                + "<mo>,</mo>".join(parts)
+                + "<mo>}</mo></mrow>"
+            )
+        if isinstance(item, tuple):
+            return sequence(item, "(", ")", ",", level)
+        if isinstance(item, (set, frozenset)):
+            return sequence(item, "{", "}", ",", level)
+        return sequence(item, "[", "]", ",", level)
+
+    if str(type(value).__module__).startswith("sympy"):
+        markup, _latex = _pycalc_sympy_math(value)
+        return markup
+    if not isinstance(value, (list, tuple, dict, set, frozenset)):
+        return None
+    markup = (
+        '<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">'
+        + container(value)
+        + "</math>"
+    )
+    return markup if len(markup) <= 400_000 else None
+
+
+def _pycalc_json_cell(value):
+    if value is None or isinstance(value, (bool, int, str)):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else str(value)
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except Exception:
+            pass
+    text = str(value)
+    return text[:240] + ("..." if len(text) > 240 else "")
+
+
+def _pycalc_dataframe_table(value, row_limit=20):
+    if not _pycalc_is_dataframe(value):
+        return None
+    limit = max(1, min(200, int(row_limit or 20)))
+    max_columns = 50
+    try:
+        all_columns = list(value.columns)
+        columns = all_columns[:max_columns]
+        total_rows = int(value.shape[0])
+        total_columns = int(value.shape[1])
+        frame = value.head(limit)
+        module = str(type(value).__module__)
+        if module == "pandas" or module.startswith("pandas."):
+            rows = [
+                [_pycalc_json_cell(frame.iat[row, col]) for col in range(len(columns))]
+                for row in range(len(frame))
+            ]
+            index = [str(item) for item in list(frame.index)[:limit]]
+        else:
+            frame = frame.select(columns)
+            rows = [[_pycalc_json_cell(item) for item in record] for record in frame.rows()]
+            index = None
+        return {
+            "columns": [str(column) for column in columns],
+            "rows": rows,
+            "index": index,
+            "totalRows": total_rows,
+            "totalColumns": total_columns,
+            "truncatedRows": total_rows > len(rows),
+            "truncatedColumns": total_columns > len(columns),
+        }
+    except Exception:
+        return None
+
+
 def _pycalc_sympy_math(value):
     try:
         if not str(type(value).__module__).startswith("sympy"):
@@ -783,38 +972,55 @@ def _pycalc_sympy_math(value):
         return None, None
 
 
-def _pycalc_run(code):
+def _pycalc_run(code, display_json="{}"):
     globals_dict = _pycalc_user_globals()
     try:
+        try:
+            options = json.loads(display_json or "{}")
+        except Exception:
+            options = {}
+        dataframe_rows = options.get("dataframeRows", 20)
+        try:
+            dataframe_rows = max(1, min(200, int(dataframe_rows)))
+        except Exception:
+            dataframe_rows = 20
         tree = ast.parse(code, "<cell>", "exec")
+        result = None
+        result_mathml = None
+        result_latex = None
+        result_math_all = None
+        result_pretty = None
+        result_table = None
         if tree.body and isinstance(tree.body[-1], ast.Expr):
             body = ast.Module(body=tree.body[:-1], type_ignores=[])
             if body.body:
                 exec(compile(body, "<cell>", "exec"), globals_dict)
             expression = ast.Expression(body=tree.body[-1].value)
             value = eval(compile(expression, "<cell>", "eval"), globals_dict)
-            if value is None:
-                result = None
-                result_mathml = None
-                result_latex = None
-            else:
+            if value is not None:
                 globals_dict["_"] = value
                 result = _pycalc_truncate(repr(value))
                 result_mathml, result_latex = _pycalc_sympy_math(value)
+                if _pycalc_has_numpy(value):
+                    result_pretty = _pycalc_pretty_repr(value)
+                if _pycalc_is_dataframe(value):
+                    result_table = _pycalc_dataframe_table(value, dataframe_rows)
+                if _pycalc_has_sympy(value):
+                    result_math_all = _pycalc_math_all(value)
                 # ans always points at the most recent non-None cell result;
                 # None / statements / errors leave the previous value intact.
                 globals_dict["ans"] = value
         else:
             exec(compile(tree, "<cell>", "exec"), globals_dict)
-            result = None
-            result_mathml = None
-            result_latex = None
         return json.dumps(
             {
                 "ok": True,
                 "result": result,
                 "resultMathML": result_mathml,
                 "resultLatex": result_latex,
+                "resultMathMLAll": result_math_all,
+                "resultPretty": result_pretty,
+                "resultTable": result_table,
             },
             ensure_ascii=False,
         )

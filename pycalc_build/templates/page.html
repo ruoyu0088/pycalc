@@ -44,7 +44,7 @@ __PYCALC_KEYBOARD_CSS__
         </select>
       </label>
       <button id="session-bar-toggle" class="icon-btn mobile-only" data-i18n-title="session.hideBar">⌃</button>
-      <button id="sympy-output-toggle" class="icon-btn hidden" data-i18n-title="sympyOutput.toggleText">T</button>
+      <button id="display-settings" class="icon-btn" data-i18n-title="display.open">⚙</button>
       <button id="theme-toggle" class="icon-btn" data-i18n-title="theme.toggleTitle">☀</button>
       <button id="sidebar-toggle" class="icon-btn" data-i18n-title="sidebar.toggleTitle">☰</button>
       <span id="save-status" class="save-status"></span>
@@ -53,6 +53,51 @@ __PYCALC_KEYBOARD_CSS__
 
   <div id="session-menu" class="session-menu hidden" role="menu"></div>
   <div id="runtime-status" class="runtime-status hidden" role="status" aria-live="polite"></div>
+
+  <div id="display-dialog" class="display-dialog hidden">
+    <div class="display-backdrop" id="display-backdrop"></div>
+    <section class="display-panel" role="dialog" aria-modal="true" aria-labelledby="display-title">
+      <header class="display-header">
+        <h2 id="display-title" data-i18n="display.title"></h2>
+        <button id="display-close" class="icon-btn" data-i18n-title="display.close">×</button>
+      </header>
+      <div class="display-body">
+        <fieldset class="display-group">
+          <legend data-i18n="display.sympy"></legend>
+          <label><input type="radio" name="sympy-output" value="text"> <span data-i18n="display.sympyText"></span></label>
+          <label><input type="radio" name="sympy-output" value="math"> <span data-i18n="display.sympyMath"></span></label>
+          <label><input type="radio" name="sympy-output" value="all"> <span data-i18n="display.sympyAll"></span></label>
+        </fieldset>
+        <fieldset class="display-group">
+          <legend data-i18n="display.numpy"></legend>
+          <label><input type="radio" name="numpy-output" value="default"> <span data-i18n="display.numpyDefault"></span></label>
+          <label><input type="radio" name="numpy-output" value="pretty"> <span data-i18n="display.numpyPretty"></span></label>
+        </fieldset>
+        <fieldset class="display-group">
+          <legend data-i18n="display.dataframe"></legend>
+          <label><input type="radio" name="dataframe-output" value="text"> <span data-i18n="display.dataframeText"></span></label>
+          <label><input type="radio" name="dataframe-output" value="table"> <span data-i18n="display.dataframeTable"></span></label>
+        </fieldset>
+        <label class="display-row">
+          <span data-i18n="display.tableRows"></span>
+          <select id="display-dataframe-rows" class="compact-select">
+            <option value="10">10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </label>
+        <fieldset class="display-group">
+          <legend data-i18n="display.matplotlib"></legend>
+          <label class="display-check">
+            <input id="display-hide-plot" type="checkbox">
+            <span data-i18n="display.hidePlotResult"></span>
+          </label>
+        </fieldset>
+      </div>
+    </section>
+  </div>
 
   <div class="workspace" id="workspace">
     <aside id="sidebar" class="sidebar">

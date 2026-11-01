@@ -266,6 +266,38 @@ button, select, textarea { font: inherit; }
   50% { opacity: .25; }
 }
 
+.display-dialog { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.display-backdrop { position: absolute; inset: 0; background: rgba(8, 12, 20, .55); }
+.display-panel {
+  position: relative;
+  width: min(460px, 100%);
+  max-height: min(86vh, 720px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 20px 60px rgba(8, 12, 20, .35);
+}
+.display-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border-soft); }
+.display-header h2 { margin: 0; font-size: 15px; }
+.display-body { padding: 6px 14px 14px; }
+.display-group { margin: 12px 0 0; padding: 0; border: 0; }
+.display-group legend { margin-bottom: 5px; padding: 0; color: var(--muted); font-size: 12px; font-weight: 600; }
+.display-group label { display: flex; align-items: flex-start; gap: 7px; padding: 5px 0; font-size: 12.5px; line-height: 1.35; cursor: pointer; }
+.display-group input { margin-top: 2px; accent-color: var(--accent); }
+.display-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; font-size: 12.5px; }
+.display-check { display: flex; align-items: flex-start; gap: 7px; padding: 5px 0; font-size: 12.5px; line-height: 1.35; cursor: pointer; }
+.display-check input { margin-top: 2px; accent-color: var(--accent); }
+
+.df-table-wrap { max-width: 100%; max-height: 340px; overflow: auto; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); }
+.df-table { border-collapse: collapse; min-width: 100%; font-size: 12px; }
+.df-table th, .df-table td { padding: 4px 8px; border-bottom: 1px solid var(--border-soft); border-right: 1px solid var(--border-soft); text-align: left; white-space: nowrap; }
+.df-table th { position: sticky; top: 0; background: var(--panel-2, var(--panel)); color: var(--muted); z-index: 1; }
+.df-table tr:last-child td { border-bottom: 0; }
+.df-table td:last-child, .df-table th:last-child { border-right: 0; }
+.df-table .df-index { color: var(--muted); }
+.df-table-note { padding: 5px 8px; color: var(--muted); font-size: 11px; }
+
 /* ---------- workspace ---------- */
 
 .workspace {

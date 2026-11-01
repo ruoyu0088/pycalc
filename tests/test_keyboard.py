@@ -58,7 +58,7 @@ class KeyboardLayoutTests(unittest.TestCase):
         drawers = LAYOUT["drawers"]
         self.assertEqual(set(drawers), {"variables", "functions", "libraries", "math", "python"})
         self.assertTrue(drawers["libraries"]["tabs"])
-        self.assertEqual(drawers["variables"]["items"], ["x", "y", "z", "a", "b", "c"])
+        self.assertEqual(drawers["variables"]["items"], ["x", "y", "z", "a", "b", "c", "i", "j", "k"])
         self.assertEqual(drawers["functions"]["suffix"], "(")
         self.assertIn("print", drawers["functions"]["items"])
         self.assertIn("range", drawers["functions"]["items"])

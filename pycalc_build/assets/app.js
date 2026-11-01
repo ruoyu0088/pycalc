@@ -192,6 +192,10 @@
     sidebarHidden: false,
     sidebarWidth: 292,
     sympyOutput: 'text',
+    numpyOutput: 'default',
+    dataframeOutput: 'text',
+    dataframeRows: 20,
+    hidePlotResult: false,
     sessionBarHidden: false,
   };
 
@@ -724,7 +728,12 @@
       runKey,
       sidebarHidden: Boolean(meta.sidebarHidden),
       sidebarWidth: clampSidebarWidth(meta.sidebarWidth),
-      sympyOutput: meta.sympyOutput === 'math' ? 'math' : 'text',
+      sympyOutput: meta.sympyOutput === 'all'
+        ? 'all' : meta.sympyOutput === 'math' ? 'math' : 'text',
+      numpyOutput: meta.numpyOutput === 'pretty' ? 'pretty' : 'default',
+      dataframeOutput: meta.dataframeOutput === 'table' ? 'table' : 'text',
+      dataframeRows: Math.max(1, Math.min(200, Number(meta.dataframeRows) || 20)),
+      hidePlotResult: Boolean(meta.hidePlotResult),
       sessionBarHidden: Boolean(meta.sessionBarHidden),
     };
   }
@@ -740,6 +749,10 @@
         sidebarHidden: state.ui.sidebarHidden,
         sidebarWidth: state.ui.sidebarWidth,
         sympyOutput: state.ui.sympyOutput,
+        numpyOutput: state.ui.numpyOutput,
+        dataframeOutput: state.ui.dataframeOutput,
+        dataframeRows: state.ui.dataframeRows,
+        hidePlotResult: state.ui.hidePlotResult,
         sessionBarHidden: state.ui.sessionBarHidden,
       });
     } catch (err) {
@@ -1620,6 +1633,43 @@
     }
   }
 
+  function dataframeTable(table) {
+    const wrap = el('div', 'df-table-wrap');
+    const node = document.createElement('table');
+    node.className = 'df-table';
+    const head = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    if (Array.isArray(table.index)) headRow.appendChild(el('th', '', '#'));
+    for (const column of table.columns || []) headRow.appendChild(el('th', '', String(column)));
+    head.appendChild(headRow);
+    node.appendChild(head);
+    const body = document.createElement('tbody');
+    for (let row = 0; row < (table.rows || []).length; row += 1) {
+      const tr = document.createElement('tr');
+      if (Array.isArray(table.index)) {
+        tr.appendChild(el('td', 'df-index', String(table.index[row] ?? '')));
+      }
+      for (const value of table.rows[row] || []) {
+        const text = value === null || value === undefined ? '' : String(value);
+        const td = el('td', '', text);
+        td.title = text;
+        tr.appendChild(td);
+      }
+      body.appendChild(tr);
+    }
+    node.appendChild(body);
+    wrap.appendChild(node);
+    if (table.truncatedRows || table.truncatedColumns) {
+      wrap.appendChild(el('div', 'df-table-note', I18n.t('display.tableTruncated', {
+        rows: (table.rows || []).length,
+        totalRows: table.totalRows,
+        columns: (table.columns || []).length,
+        totalColumns: table.totalColumns,
+      })));
+    }
+    return wrap;
+  }
+
   function makeCell(entry) {
     const cell = el('div', 'entry');
     const inputRow = el('div', 'io-row');
@@ -1633,10 +1683,26 @@
       const body = el('div', 'output-body');
       if (entry.stdout) body.appendChild(el('pre', 'stream', entry.stdout));
       if (entry.stderr) body.appendChild(el('pre', 'stream stderr', entry.stderr));
-      if (entry.result !== null && entry.result !== undefined) {
-        const math = state.ui.sympyOutput === 'math' ? mathResult(entry.resultMathML) : null;
-        if (math) body.appendChild(math);
-        else body.appendChild(el('pre', 'result', entry.result));
+      const hideResult = state.ui.hidePlotResult && entry.images && entry.images.length > 0;
+      if (!hideResult && entry.result !== null && entry.result !== undefined) {
+        if (state.ui.dataframeOutput === 'table' && entry.resultTable) {
+          body.appendChild(dataframeTable(entry.resultTable));
+        } else {
+          let math = null;
+          if (state.ui.sympyOutput === 'all') {
+            math = mathResult(entry.resultMathMLAll || entry.resultMathML);
+          } else if (state.ui.sympyOutput === 'math') {
+            math = mathResult(entry.resultMathML);
+          }
+          if (math) {
+            body.appendChild(math);
+          } else {
+            const text = state.ui.numpyOutput === 'pretty' && entry.resultPretty
+              ? entry.resultPretty
+              : entry.result;
+            body.appendChild(el('pre', 'result', text));
+          }
+        }
       }
       if (entry.error) body.appendChild(el('pre', 'error', entry.error));
       if (entry.images && entry.images.length) {
@@ -1867,6 +1933,9 @@
       result: null,
       resultMathML: null,
       resultLatex: null,
+      resultMathMLAll: null,
+      resultPretty: null,
+      resultTable: null,
       error: null,
       images: [],
     };
@@ -1879,11 +1948,17 @@
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     try {
-      const result = JSON.parse(await py.run(code));
+      const result = JSON.parse(await py.run(
+        code,
+        JSON.stringify({ dataframeRows: state.ui.dataframeRows })
+      ));
       entry.status = result.ok ? 'ok' : 'error';
       entry.result = result.ok ? result.result : null;
       entry.resultMathML = result.ok ? (result.resultMathML || null) : null;
       entry.resultLatex = result.ok ? (result.resultLatex || null) : null;
+      entry.resultMathMLAll = result.ok ? (result.resultMathMLAll || null) : null;
+      entry.resultPretty = result.ok ? (result.resultPretty || null) : null;
+      entry.resultTable = result.ok ? (result.resultTable || null) : null;
       entry.error = result.ok ? null : result.error;
       try {
         const images = JSON.parse(await py.figures());
@@ -1923,7 +1998,7 @@
     $('language-select').disabled = state.busy;
     $('run-key').disabled = state.busy;
     $('theme-toggle').disabled = state.busy;
-    $('sympy-output-toggle').disabled = state.busy;
+    $('display-settings').disabled = state.busy;
     for (const input of $('library-list').querySelectorAll('input')) {
       input.disabled = state.busy || !state.ready;
     }
@@ -1966,20 +2041,60 @@
     if (persist) saveUiMeta();
   }
 
+  function renderDisplaySettings() {
+    const setRadio = (name, value) => {
+      const input = document.querySelector(`input[name="${name}"][value="${value}"]`);
+      if (input) input.checked = true;
+    };
+    setRadio('sympy-output', state.ui.sympyOutput);
+    setRadio('numpy-output', state.ui.numpyOutput);
+    setRadio('dataframe-output', state.ui.dataframeOutput);
+    const rows = $('display-dataframe-rows');
+    if (rows) rows.value = String(state.ui.dataframeRows);
+    const hide = $('display-hide-plot');
+    if (hide) hide.checked = Boolean(state.ui.hidePlotResult);
+  }
+
   function renderSympyControl() {
-    const button = $('sympy-output-toggle');
+    const button = $('display-settings');
     if (!button) return;
-    const available = AVAILABLE_LIB_IDS.has('sympy');
-    button.classList.toggle('hidden', !available);
-    const math = state.ui.sympyOutput === 'math';
-    button.textContent = math ? '∑' : 'T';
-    button.title = I18n.t(math ? 'sympyOutput.toggleMath' : 'sympyOutput.toggleText');
+    button.title = I18n.t('display.open');
     button.setAttribute('aria-label', button.title);
-    button.setAttribute('aria-pressed', String(math));
+    renderDisplaySettings();
+  }
+
+  function openDisplaySettings() {
+    renderDisplaySettings();
+    const dialog = $('display-dialog');
+    if (dialog) dialog.classList.remove('hidden');
+  }
+
+  function closeDisplaySettings() {
+    const dialog = $('display-dialog');
+    if (dialog) dialog.classList.add('hidden');
+  }
+
+  function applyDisplaySettings({ rowsOnly = false } = {}) {
+    const checked = (name, fallback) => {
+      const input = document.querySelector(`input[name="${name}"]:checked`);
+      return input ? input.value : fallback;
+    };
+    state.ui.sympyOutput = checked('sympy-output', 'text');
+    state.ui.numpyOutput = checked('numpy-output', 'default');
+    state.ui.dataframeOutput = checked('dataframe-output', 'text');
+    state.ui.dataframeRows = Math.max(
+      1, Math.min(200, Number($('display-dataframe-rows')?.value) || 20)
+    );
+    state.ui.hidePlotResult = Boolean($('display-hide-plot')?.checked);
+    renderSympyControl();
+    // Row count is deliberately captured into each new table; changing it
+    // must not rewrite tables that are already in history.
+    if (!rowsOnly && !state.busy) renderConsole();
+    saveUiMeta();
   }
 
   function applySympyOutput(mode, persist = true) {
-    state.ui.sympyOutput = mode === 'math' ? 'math' : 'text';
+    state.ui.sympyOutput = mode === 'all' ? 'all' : mode === 'math' ? 'math' : 'text';
     renderSympyControl();
     if (!state.busy) renderConsole();
     if (persist) saveUiMeta();
@@ -2109,7 +2224,9 @@
       closeSessionMenu();
     });
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') closeSessionMenu();
+      if (event.key !== 'Escape') return;
+      closeSessionMenu();
+      closeDisplaySettings();
     });
     window.addEventListener('resize', closeSessionMenu);
     $('session-new').addEventListener('click', newSession);
@@ -2122,8 +2239,11 @@
     $('overlay-retry').addEventListener('click', () => location.reload());
     $('language-select').addEventListener('change', (event) => setLanguage(event.target.value));
     $('run-key').addEventListener('change', (event) => applyRunKey(event.target.value));
-    $('sympy-output-toggle').addEventListener('click', () => {
-      applySympyOutput(state.ui.sympyOutput === 'math' ? 'text' : 'math');
+    $('display-settings').addEventListener('click', openDisplaySettings);
+    $('display-close').addEventListener('click', closeDisplaySettings);
+    $('display-backdrop').addEventListener('click', closeDisplaySettings);
+    $('display-dialog').addEventListener('change', (event) => {
+      applyDisplaySettings({ rowsOnly: event.target.id === 'display-dataframe-rows' });
     });
     $('theme-toggle').addEventListener('click', () => {
       applyTheme(state.ui.theme === 'dark' ? 'light' : 'dark');
@@ -2445,6 +2565,34 @@
     setPlotTheme: (theme) => (py ? py.setPlotTheme(theme) : null),
     setRunKey: (key) => applyRunKey(key),
     setSympyOutput: (mode) => applySympyOutput(mode),
+    setDisplaySettings: (settings) => {
+      const next = settings || {};
+      if (['text', 'math', 'all'].includes(next.sympyOutput)) {
+        state.ui.sympyOutput = next.sympyOutput;
+      }
+      if (['default', 'pretty'].includes(next.numpyOutput)) {
+        state.ui.numpyOutput = next.numpyOutput;
+      }
+      if (['text', 'table'].includes(next.dataframeOutput)) {
+        state.ui.dataframeOutput = next.dataframeOutput;
+      }
+      if (next.dataframeRows !== undefined) {
+        state.ui.dataframeRows = Math.max(1, Math.min(200, Number(next.dataframeRows) || 20));
+      }
+      if (next.hidePlotResult !== undefined) {
+        state.ui.hidePlotResult = Boolean(next.hidePlotResult);
+      }
+      renderSympyControl();
+      renderConsole();
+      saveUiMeta();
+      return {
+        sympyOutput: state.ui.sympyOutput,
+        numpyOutput: state.ui.numpyOutput,
+        dataframeOutput: state.ui.dataframeOutput,
+        dataframeRows: state.ui.dataframeRows,
+        hidePlotResult: state.ui.hidePlotResult,
+      };
+    },
     selectLibraries: async (ids) => {
       state.libraries = normalizeLibraryList(ids);
       renderLibraryBar();
