@@ -17,8 +17,11 @@ __PYCALC_KEYBOARD_CSS__
 <div id="app">
   <header class="topbar">
     <div class="brand">
-      <span class="brand-name">PyCalc</span>
-      <span class="brand-sub" data-i18n="app.subtitle"></span>
+      <button id="session-title" class="session-title" data-i18n-title="session.switchTitle"
+              aria-haspopup="menu" aria-expanded="false">
+        <span id="session-title-name" class="session-title-name"></span>
+        <span class="session-title-caret" aria-hidden="true">▾</span>
+      </button>
     </div>
 
     <div class="session-bar">
@@ -47,6 +50,8 @@ __PYCALC_KEYBOARD_CSS__
       <span id="save-status" class="save-status"></span>
     </div>
   </header>
+
+  <div id="session-menu" class="session-menu hidden" role="menu"></div>
 
   <div class="workspace" id="workspace">
     <aside id="sidebar" class="sidebar">

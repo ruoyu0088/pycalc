@@ -634,6 +634,60 @@ def test_worker_responsive() -> None:
     log("  PASS worker UI responsiveness")
 
 
+def test_session_title() -> None:
+    log("[12] session title / menu")
+    html = build_case("session-title.html", ["numpy", "sympy"], "314.0.7")
+    profile = OUT / "profiles" / "session-title"
+    shutil.rmtree(profile, ignore_errors=True)
+    expected = {"en": "Default", "zh": "默认会话", "ja": "デフォルト"}
+    with Browser(file_url(html), profile=profile, timeout=180) as browser:
+        browser.call(
+            "Emulation.setDeviceMetricsOverride",
+            {"width": 390, "height": 844, "deviceScaleFactor": 3, "mobile": True},
+        )
+        browser.call("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
+        browser.call("Page.reload", {"ignoreCache": True})
+        browser.wait_ready(timeout=180)
+        for lang, default_name in expected.items():
+            browser.eval(f"window.__pycalc.setLanguage({lang!r})")
+            time.sleep(0.2)
+            active = browser.eval("window.__pycalc.active()")
+            if active["name"] != default_name:
+                browser.eval(f"window.__pycalc.deleteSession({active['id']!r})")
+                time.sleep(0.4)
+            metrics = browser.eval(
+                "(() => {"
+                " const n = document.getElementById('session-title-name');"
+                " return {text: n.textContent, scroll: n.scrollWidth,"
+                "         client: n.clientWidth, height: n.getBoundingClientRect().height};"
+                "})()"
+            )
+            assert metrics["text"] == default_name, (lang, metrics)
+            assert metrics["scroll"] <= metrics["client"] + 1, (lang, metrics)
+            assert metrics["height"] <= 24, (lang, metrics)
+        browser.eval("document.getElementById('session-title').click()")
+        time.sleep(0.2)
+        assert browser.eval(
+            "document.getElementById('session-menu').classList.contains('hidden')"
+        ) is False
+        assert browser.eval("document.querySelectorAll('.session-menu-item').length") == 1
+        browser.eval("document.getElementById('session-title').click()")
+        time.sleep(0.2)
+        browser.eval("window.__pycalc.createSession('Another session')")
+        browser.eval("document.getElementById('session-title').click()")
+        time.sleep(0.2)
+        assert browser.eval("document.querySelectorAll('.session-menu-item').length") == 2
+        browser.eval("document.getElementById('toast').classList.add('hidden')")
+        browser.screenshot(ART / "session-title-menu.png")
+        browser.eval(
+            "[...document.querySelectorAll('.session-menu-item')]"
+            ".find(x => x.textContent.includes('Another session')).click()"
+        )
+        time.sleep(0.4)
+        assert browser.eval("document.getElementById('session-title-name').textContent") == "Another session"
+    log("  PASS session title / menu")
+
+
 def test_full_314() -> None:
     log("[2] full build / 314.0.7")
     html = build_case("full314.html", ["numpy", "sympy", "matplotlib"], "314.0.7")
@@ -1175,6 +1229,7 @@ def main() -> int:
         test_full_314()
         test_pwa()
         test_worker_responsive()
+        test_session_title()
         test_mobile_keyboard()
         test_ios_keyboard()
         test_full_0278()

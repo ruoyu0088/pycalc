@@ -811,9 +811,72 @@
     if (state.activeId) select.value = state.activeId;
   }
 
+  function renderSessionTitle() {
+    const name = $('session-title-name');
+    if (!name) return;
+    name.textContent = state.activeName || I18n.t('session.defaultName');
+  }
+
+  function renderSessionMenu() {
+    const menu = $('session-menu');
+    if (!menu) return;
+    menu.innerHTML = '';
+    const sorted = [...state.sessions].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    for (const session of sorted) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'session-menu-item';
+      item.setAttribute('role', 'menuitem');
+      item.title = session.name;
+      item.appendChild(el('span', 'session-menu-check', session.id === state.activeId ? '✓' : ''));
+      item.appendChild(el('span', 'session-menu-name', session.name));
+      if (session.id === state.activeId) item.classList.add('active');
+      item.addEventListener('click', () => {
+        closeSessionMenu();
+        if (session.id !== state.activeId) switchSession(session.id);
+      });
+      menu.appendChild(item);
+    }
+  }
+
+  function openSessionMenu() {
+    const title = $('session-title');
+    const menu = $('session-menu');
+    if (!title || !menu || title.disabled) return;
+    renderSessionMenu();
+    menu.classList.remove('hidden');
+    const rect = title.getBoundingClientRect();
+    const width = menu.offsetWidth;
+    const height = menu.offsetHeight;
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+    let top = rect.bottom + 6;
+    if (top + height > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - height - 6);
+    }
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+    title.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeSessionMenu() {
+    const menu = $('session-menu');
+    const title = $('session-title');
+    if (menu) menu.classList.add('hidden');
+    if (title) title.setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleSessionMenu() {
+    const menu = $('session-menu');
+    if (!menu || menu.classList.contains('hidden')) openSessionMenu();
+    else closeSessionMenu();
+  }
+
   function updateHeader() {
     document.title = state.activeName ? `PyCalc — ${state.activeName}` : 'PyCalc';
     renderSessionSelect();
+    renderSessionTitle();
+    const menu = $('session-menu');
+    if (menu && !menu.classList.contains('hidden')) renderSessionMenu();
   }
 
   async function createSessionRecord(name) {
@@ -1004,6 +1067,7 @@
   }
 
   async function switchSession(id) {
+    closeSessionMenu();
     if (state.busy || !id || id === state.activeId) return;
     state.busy = true;
     updateBusyUi();
@@ -1842,6 +1906,8 @@
   function updateBusyUi() {
     $('run').disabled = state.busy || !state.ready;
     $('session-select').disabled = state.busy || !state.ready;
+    $('session-title').disabled = state.busy || !state.ready;
+    if ($('session-title').disabled) closeSessionMenu();
     $('session-new').disabled = state.busy || !state.ready;
     $('session-rename').disabled = state.busy || !state.ready;
     $('session-redraw').disabled = state.busy || !state.activeId;
@@ -1956,6 +2022,8 @@
     $('language-select').value = state.ui.language;
     $('theme-toggle').title = I18n.t('theme.toggleTitle');
     $('session-select').title = I18n.t('session.selectTitle');
+    $('session-title').title = I18n.t('session.switchTitle');
+    $('session-title').setAttribute('aria-label', I18n.t('session.switchTitle'));
     $('sidebar-toggle').title = I18n.t('sidebar.toggleTitle');
     $('run-key').value = state.ui.runKey;
     renderRunHint();
@@ -2018,6 +2086,20 @@
   function bindUi() {
     $('run').addEventListener('click', runCode);
     $('session-select').addEventListener('change', (event) => switchSession(event.target.value));
+    $('session-title').addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleSessionMenu();
+    });
+    document.addEventListener('pointerdown', (event) => {
+      const menu = $('session-menu');
+      if (!menu || menu.classList.contains('hidden')) return;
+      if (menu.contains(event.target) || $('session-title').contains(event.target)) return;
+      closeSessionMenu();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeSessionMenu();
+    });
+    window.addEventListener('resize', closeSessionMenu);
     $('session-new').addEventListener('click', newSession);
     $('session-rename').addEventListener('click', renameSession);
     $('session-redraw').addEventListener('click', redrawSessionHistory);
