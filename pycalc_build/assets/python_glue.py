@@ -818,6 +818,89 @@ def _pycalc_pretty_repr(value, depth=0):
     return _pycalc_truncate(repr(value))
 
 
+def _pycalc_numpy_float_name(value):
+    try:
+        import numpy as np
+        if isinstance(value, np.floating):
+            return type(value).__name__
+    except Exception:
+        pass
+    return None
+
+
+def _pycalc_has_floating(value, depth=0):
+    if isinstance(value, float):
+        return True
+    if _pycalc_numpy_float_name(value):
+        return True
+    try:
+        import numpy as np
+        if isinstance(value, np.ndarray):
+            return value.dtype.kind in "fc" and bool(value.size)
+    except Exception:
+        pass
+    if depth > 4:
+        return False
+    if isinstance(value, dict):
+        return any(
+            _pycalc_has_floating(key, depth + 1)
+            or _pycalc_has_floating(item, depth + 1)
+            for key, item in list(value.items())[:100]
+        )
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return any(_pycalc_has_floating(item, depth + 1) for item in list(value)[:100])
+    return False
+
+
+def _float_leaf(value):
+    if math.isfinite(value):
+        return {"kind": "float", "value": float(value)}
+    return {"kind": "text", "text": repr(float(value))}
+
+
+def _pycalc_number_tree(value, depth=0):
+    """JSON-safe tree preserving float values for later precision changes."""
+    if isinstance(value, float):
+        return _float_leaf(value)
+    numpy_float = _pycalc_numpy_float_name(value)
+    if numpy_float:
+        number = float(value)
+        if not math.isfinite(number):
+            return {"kind": "text", "text": repr(value)}
+        return {"kind": "numpy-float", "name": numpy_float, "value": number}
+    try:
+        import numpy as np
+        if isinstance(value, np.ndarray):
+            if value.size > 10000:
+                return {"kind": "text", "text": _pycalc_truncate(repr(value))}
+            return {
+                "kind": "numpy-array",
+                "items": _pycalc_number_tree(value.tolist(), depth + 1),
+            }
+    except Exception:
+        pass
+    if depth > 4:
+        return {"kind": "text", "text": _pycalc_truncate(repr(value))}
+    if isinstance(value, list):
+        return {"kind": "list", "items": [
+            _pycalc_number_tree(item, depth + 1) for item in value[:1000]
+        ]}
+    if isinstance(value, tuple):
+        return {"kind": "tuple", "items": [
+            _pycalc_number_tree(item, depth + 1) for item in value[:1000]
+        ]}
+    if isinstance(value, (set, frozenset)):
+        return {"kind": "set", "items": [
+            _pycalc_number_tree(item, depth + 1) for item in list(value)[:200]
+        ]}
+    if isinstance(value, dict):
+        return {"kind": "dict", "items": [
+            [_pycalc_number_tree(key, depth + 1), _pycalc_number_tree(item, depth + 1)]
+            for key, item in list(value.items())[:200]
+        ]}
+    return {"kind": "text", "text": _pycalc_truncate(repr(value))}
+
+
 def _pycalc_has_sympy(value, depth=0):
     if str(type(value).__module__).startswith("sympy"):
         return True
@@ -904,6 +987,18 @@ def _pycalc_json_cell(value):
         return value
     if isinstance(value, float):
         return value if math.isfinite(value) else str(value)
+    numpy_float = _pycalc_numpy_float_name(value)
+    if numpy_float:
+        number = float(value)
+        return number if math.isfinite(number) else str(value)
+    try:
+        import numpy as np
+        if isinstance(value, np.integer):
+            return int(value)
+        if isinstance(value, np.bool_):
+            return bool(value)
+    except Exception:
+        pass
     if hasattr(value, "isoformat"):
         try:
             return value.isoformat()
@@ -991,6 +1086,7 @@ def _pycalc_run(code, display_json="{}"):
         result_math_all = None
         result_pretty = None
         result_table = None
+        result_numbers = None
         if tree.body and isinstance(tree.body[-1], ast.Expr):
             body = ast.Module(body=tree.body[:-1], type_ignores=[])
             if body.body:
@@ -1005,6 +1101,8 @@ def _pycalc_run(code, display_json="{}"):
                     result_pretty = _pycalc_pretty_repr(value)
                 if _pycalc_is_dataframe(value):
                     result_table = _pycalc_dataframe_table(value, dataframe_rows)
+                elif _pycalc_has_floating(value):
+                    result_numbers = _pycalc_number_tree(value)
                 if _pycalc_has_sympy(value):
                     result_math_all = _pycalc_math_all(value)
                 # ans always points at the most recent non-None cell result;
@@ -1021,6 +1119,7 @@ def _pycalc_run(code, display_json="{}"):
                 "resultMathMLAll": result_math_all,
                 "resultPretty": result_pretty,
                 "resultTable": result_table,
+                "resultNumbers": result_numbers,
             },
             ensure_ascii=False,
         )

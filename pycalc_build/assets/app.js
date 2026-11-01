@@ -195,6 +195,7 @@
     numpyOutput: 'default',
     dataframeOutput: 'text',
     dataframeRows: 20,
+    floatDigits: 10,
     hidePlotResult: false,
     sessionBarHidden: false,
   };
@@ -733,6 +734,10 @@
       numpyOutput: meta.numpyOutput === 'pretty' ? 'pretty' : 'default',
       dataframeOutput: meta.dataframeOutput === 'table' ? 'table' : 'text',
       dataframeRows: Math.max(1, Math.min(200, Number(meta.dataframeRows) || 20)),
+      floatDigits: meta.floatDigits === 'auto'
+        ? 'auto'
+        : [6, 8, 10, 12, 15].includes(Number(meta.floatDigits))
+          ? Number(meta.floatDigits) : 10,
       hidePlotResult: Boolean(meta.hidePlotResult),
       sessionBarHidden: Boolean(meta.sessionBarHidden),
     };
@@ -752,6 +757,7 @@
         numpyOutput: state.ui.numpyOutput,
         dataframeOutput: state.ui.dataframeOutput,
         dataframeRows: state.ui.dataframeRows,
+        floatDigits: state.ui.floatDigits,
         hidePlotResult: state.ui.hidePlotResult,
         sessionBarHidden: state.ui.sessionBarHidden,
       });
@@ -1633,6 +1639,55 @@
     }
   }
 
+  function formatFloatNumber(value, digits) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return String(value);
+    return Number(number.toPrecision(digits)).toString();
+  }
+
+  function formatNumberTree(node, digits, numpyPretty) {
+    if (!node) return '';
+    if (node.kind === 'text') return node.text;
+    if (node.kind === 'float') return formatFloatNumber(node.value, digits);
+    if (node.kind === 'numpy-float') {
+      const number = formatFloatNumber(node.value, digits);
+      return numpyPretty ? number : `np.${node.name}(${number})`;
+    }
+    if (node.kind === 'numpy-array') {
+      const inner = formatNumberTree(node.items, digits, numpyPretty);
+      return numpyPretty ? inner : `array(${inner})`;
+    }
+    const items = node.items || [];
+    if (node.kind === 'dict') {
+      return '{' + items.map(([key, value]) => (
+        `${formatNumberTree(key, digits, numpyPretty)}: ${formatNumberTree(value, digits, numpyPretty)}`
+      )).join(', ') + '}';
+    }
+    if (node.kind === 'tuple') {
+      const parts = items.map((item) => formatNumberTree(item, digits, numpyPretty));
+      return parts.length === 1 ? `(${parts[0]},)` : `(${parts.join(', ')})`;
+    }
+    const parts = items.map((item) => formatNumberTree(item, digits, numpyPretty));
+    if (node.kind === 'set') return '{' + parts.join(', ') + '}';
+    return '[' + parts.join(', ') + ']';
+  }
+
+  function formatTableCell(value, digits) {
+    if (typeof value === 'number' && digits !== 'auto' && !Number.isInteger(value)) {
+      return formatFloatNumber(value, digits);
+    }
+    return value === null || value === undefined ? '' : String(value);
+  }
+
+  function entryResultText(entry) {
+    const digits = state.ui.floatDigits;
+    if (digits !== 'auto' && entry.resultNumbers) {
+      return formatNumberTree(entry.resultNumbers, digits, state.ui.numpyOutput === 'pretty');
+    }
+    if (state.ui.numpyOutput === 'pretty' && entry.resultPretty) return entry.resultPretty;
+    return entry.result;
+  }
+
   function dataframeTable(table) {
     const wrap = el('div', 'df-table-wrap');
     const node = document.createElement('table');
@@ -1650,7 +1705,7 @@
         tr.appendChild(el('td', 'df-index', String(table.index[row] ?? '')));
       }
       for (const value of table.rows[row] || []) {
-        const text = value === null || value === undefined ? '' : String(value);
+        const text = formatTableCell(value, state.ui.floatDigits);
         const td = el('td', '', text);
         td.title = text;
         tr.appendChild(td);
@@ -1697,10 +1752,7 @@
           if (math) {
             body.appendChild(math);
           } else {
-            const text = state.ui.numpyOutput === 'pretty' && entry.resultPretty
-              ? entry.resultPretty
-              : entry.result;
-            body.appendChild(el('pre', 'result', text));
+            body.appendChild(el('pre', 'result', entryResultText(entry)));
           }
         }
       }
@@ -1936,6 +1988,7 @@
       resultMathMLAll: null,
       resultPretty: null,
       resultTable: null,
+      resultNumbers: null,
       error: null,
       images: [],
     };
@@ -1959,6 +2012,7 @@
       entry.resultMathMLAll = result.ok ? (result.resultMathMLAll || null) : null;
       entry.resultPretty = result.ok ? (result.resultPretty || null) : null;
       entry.resultTable = result.ok ? (result.resultTable || null) : null;
+      entry.resultNumbers = result.ok ? (result.resultNumbers || null) : null;
       entry.error = result.ok ? null : result.error;
       try {
         const images = JSON.parse(await py.figures());
@@ -2051,6 +2105,8 @@
     setRadio('dataframe-output', state.ui.dataframeOutput);
     const rows = $('display-dataframe-rows');
     if (rows) rows.value = String(state.ui.dataframeRows);
+    const floatDigits = $('display-float-digits');
+    if (floatDigits) floatDigits.value = String(state.ui.floatDigits);
     const hide = $('display-hide-plot');
     if (hide) hide.checked = Boolean(state.ui.hidePlotResult);
   }
@@ -2085,6 +2141,10 @@
     state.ui.dataframeRows = Math.max(
       1, Math.min(200, Number($('display-dataframe-rows')?.value) || 20)
     );
+    const floatDigits = $('display-float-digits')?.value;
+    state.ui.floatDigits = floatDigits === 'auto'
+      ? 'auto'
+      : [6, 8, 10, 12, 15].includes(Number(floatDigits)) ? Number(floatDigits) : 10;
     state.ui.hidePlotResult = Boolean($('display-hide-plot')?.checked);
     renderSympyControl();
     // Row count is deliberately captured into each new table; changing it
@@ -2579,6 +2639,11 @@
       if (next.dataframeRows !== undefined) {
         state.ui.dataframeRows = Math.max(1, Math.min(200, Number(next.dataframeRows) || 20));
       }
+      if (next.floatDigits === 'auto') {
+        state.ui.floatDigits = 'auto';
+      } else if (next.floatDigits !== undefined && [6, 8, 10, 12, 15].includes(Number(next.floatDigits))) {
+        state.ui.floatDigits = Number(next.floatDigits);
+      }
       if (next.hidePlotResult !== undefined) {
         state.ui.hidePlotResult = Boolean(next.hidePlotResult);
       }
@@ -2590,6 +2655,7 @@
         numpyOutput: state.ui.numpyOutput,
         dataframeOutput: state.ui.dataframeOutput,
         dataframeRows: state.ui.dataframeRows,
+        floatDigits: state.ui.floatDigits,
         hidePlotResult: state.ui.hidePlotResult,
       };
     },

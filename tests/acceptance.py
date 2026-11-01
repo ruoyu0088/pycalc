@@ -557,6 +557,29 @@ def test_dataframe_summary() -> None:
         assert browser.eval("document.querySelectorAll('.df-table tbody tr').length") == 3
         browser.eval("window.__pycalc.setDisplaySettings({dataframeOutput: 'text'})")
         assert browser.eval("document.querySelectorAll('.df-table').length") == 0
+
+        browser.eval(
+            "window.__pycalc.setDisplaySettings({dataframeOutput: 'table',"
+            " dataframeRows: 20, floatDigits: 6})"
+        )
+        browser.run_cell(
+            "import pandas as pd\n"
+            "fdf = pd.DataFrame({'value': [1.23456789, 2.34567891]})\n"
+            "fdf"
+        )
+        time.sleep(0.2)
+        cells = browser.eval(
+            "[...[...document.querySelectorAll('.df-table')].at(-1)"
+            ".querySelectorAll('tbody tr:last-child td')].map(x => x.textContent)"
+        )
+        assert cells[-1] == "2.34568", cells
+        browser.eval("window.__pycalc.setDisplaySettings({floatDigits: 'auto'})")
+        time.sleep(0.2)
+        cells = browser.eval(
+            "[...[...document.querySelectorAll('.df-table')].at(-1)"
+            ".querySelectorAll('tbody tr:last-child td')].map(x => x.textContent)"
+        )
+        assert cells[-1] == "2.34567891", cells
     log("  PASS DataFrame summary")
 
 
@@ -809,6 +832,21 @@ def test_full_314() -> None:
             "document.querySelector('input[name=sympy-output]:checked').value"
         ) == "text"
         browser.eval("document.getElementById('display-close').click()")
+
+        # Float precision is significant-digit based and applies to history
+        # through a per-result number tree; strings inside containers survive.
+        float_result = browser.run_cell("0.1 + 0.2")
+        assert float_result["result"] == "0.30000000000000004", float_result
+        assert browser.eval("[...document.querySelectorAll('pre.result')].at(-1).textContent") == "0.3"
+        browser.eval("window.__pycalc.setDisplaySettings({floatDigits: 'auto'})")
+        time.sleep(0.2)
+        assert browser.eval("[...document.querySelectorAll('pre.result')].at(-1).textContent") == "0.30000000000000004"
+        browser.eval("window.__pycalc.setDisplaySettings({floatDigits: 6})")
+        time.sleep(0.2)
+        assert browser.eval("[...document.querySelectorAll('pre.result')].at(-1).textContent") == "0.3"
+        mixed = browser.run_cell("mixed = [1.23456789, '1.23456789']\nmixed")
+        assert browser.eval("[...document.querySelectorAll('pre.result')].at(-1).textContent") == "[1.23457, '1.23456789']"
+        browser.eval("window.__pycalc.setDisplaySettings({floatDigits: 10})")
 
         # NumPy pretty mode hides array()/np.float64() wrappers.
         array_result = browser.run_cell("import numpy as np\nnp.array([1, 2, 3])")
@@ -1249,7 +1287,8 @@ def test_new_features() -> None:
         browser.eval("window.__pycalc.setSympyOutput('math')")
         browser.eval(
             "window.__pycalc.setDisplaySettings({numpyOutput: 'pretty',"
-            " dataframeOutput: 'table', dataframeRows: 50, hidePlotResult: true})"
+            " dataframeOutput: 'table', dataframeRows: 50, floatDigits: 8,"
+            " hidePlotResult: true})"
         )
         browser.eval("new Promise(resolve => setTimeout(resolve, 400))")
         browser.call("Page.reload", {"ignoreCache": True})
@@ -1259,6 +1298,7 @@ def test_new_features() -> None:
         assert ui["sympyOutput"] == "math", ui
         assert ui["numpyOutput"] == "pretty" and ui["dataframeOutput"] == "table", ui
         assert ui["dataframeRows"] == 50 and ui["hidePlotResult"] is True, ui
+        assert ui["floatDigits"] == 8, ui
         assert abs(float(ui["sidebarWidth"]) - width_after) < 2, (ui, width_after)
         assert browser.eval("document.querySelector('.side-card h3').textContent") == "Variables"
         assert browser.eval("document.querySelectorAll('.math-result math').length") >= 1
