@@ -151,7 +151,7 @@ LAYOUT = {
             "emptyKey": "keyboard.empty.variables",
             # Manual entries appear first; user variables with the same name
             # are omitted from the automatic part.
-            "items": ["x", "y", "z", "a", "b", "c"],
+            "items": ["x", "y", "z", "a", "b", "c", "i", "j", "k"],
         },
         "functions": {
             "titleKey": "keyboard.button.functions",
@@ -252,6 +252,7 @@ LAYOUT = {
             {"label": "array", "insert": "?array("},
             {"label": "arange", "insert": "?arange("},
             {"label": "linspace", "insert": "?linspace("},
+            {"label": "ogrid", "insert": "?ogrid["},
             {"label": "zeros", "insert": "?zeros("},
             {"label": "ones", "insert": "?ones("},
             {"label": "where", "insert": "?where("},
@@ -269,7 +270,12 @@ LAYOUT = {
             {"label": "shape", "insert": ".shape"},
             {"label": "dtype", "insert": ".dtype"},
             {"label": "T", "insert": ".T"},
-            {"label": "linalg.norm", "insert": "?linalg.norm("},
+            {"label": "norm", "insert": "?linalg.norm("},
+            {"label": "inv", "insert": "?linalg.inv("},
+            {"label": "det", "insert": "?linalg.det("},
+            {"label": "solve", "insert": "?linalg.solve("},
+            {"label": "lstsq", "insert": "?linalg.lstsq("},
+            {"label": "svd", "insert": "?linalg.svd("},
         ],
         "numpy.linalg": [
             {"label": "norm", "insert": "?norm("},
@@ -318,10 +324,7 @@ LAYOUT = {
             {"label": "ylabel", "insert": "?ylabel("},
             {"label": "legend", "insert": "?.legend("},
             {"label": "grid", "insert": "?grid("},
-            {"label": "show", "insert": "?show("},
-            {"label": "savefig", "insert": "?savefig("},
             {"label": "tight_layout", "insert": "?tight_layout("},
-            {"label": "close", "insert": "?close("},
             {"label": "set_title", "insert": ".set_title("},
             {"label": "set_xlabel", "insert": ".set_xlabel("},
             {"label": "set_ylabel", "insert": ".set_ylabel("},

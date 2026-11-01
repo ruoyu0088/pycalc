@@ -330,7 +330,7 @@ body.mobile-keyboard-ios .cm-cursor {
 }
 
 .mk-drawer-item {
-  padding: 10px 14px;
+  padding: 10px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel);
