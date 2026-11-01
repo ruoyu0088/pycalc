@@ -162,6 +162,11 @@ def _ensure_wheels(
 
 
 def build(config: BuildConfig, log: Log | None = None) -> BuildResult:
+    import importlib
+    from . import keyboard_layout
+    importlib.reload(keyboard_layout)
+    from .keyboard_layout import LAYOUT as KEYBOARD_LAYOUT
+    
     started = time.time()
     say = _make_logger(log)
     user_libs = normalize_libs(config.libs)

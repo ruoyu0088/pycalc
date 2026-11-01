@@ -96,49 +96,58 @@ LAYOUT = {
             "type": "keyboard",
             "views": {
                 "letters": [
+                    [
+                        {"label": "123", "action": "view:numbers"},
+                        {"label": "←", "action": "cursorLeft"},
+                        {"label": "→", "action": "cursorRight"},
+                        {
+                            "labelKey": "keyboard.key.space",
+                            "action": "space",
+                        },
+                        {
+                            "label": "⏎",
+                            "action": "enter",
+                            # "wide": True,
+                        },
+                        {"label": "⌫", "action": "backspace"},
+                    ],
                     "q w e r t y u i o p",
                     "a s d f g h j k l",
                     [
                         {"label": "⇧", "action": "shift"},
-                        "z x c v b n m",
-                        {"label": "⌫", "action": "backspace"},
-                        {"label": "123", "action": "view:numbers"},
+                        'z x c v b n m "',
                     ],
                     "( ) [ ] { } : , . =",
-                    [
-                        {
-                            "labelKey": "keyboard.key.space",
-                            "action": "space",
-                            "wide": True,
-                        },
-                        {"label": "←", "action": "cursorLeft"},
-                        {"label": "→", "action": "cursorRight"},
-                        {
-                            "labelKey": "keyboard.key.enter",
-                            "action": "enter",
-                            "wide": True,
-                        },
-                    ],
+                    # [
+                    #     {
+                    #         "labelKey": "keyboard.key.space",
+                    #         "action": "space",
+                    #         "wide": True,
+                    #     },
+                    #     {"label": "←", "action": "cursorLeft"},
+                    #     {"label": "→", "action": "cursorRight"},
+                    # ],
                 ],
                 "numbers": [
-                    "1 2 3 4 5 6 7 8 9 0",
-                    "- / * + = _ < > % |",
-                    "\" ' ` ~ ^ & @ # $ !",
                     [
-                        {"label": "ABC", "action": "view:letters", "wide": True},
-                        {
-                            "labelKey": "keyboard.key.space",
-                            "action": "space",
-                            "wide": True,
-                        },
+                        {"label": "ABC", "action": "view:letters"},
                         {"label": "←", "action": "cursorLeft"},
                         {"label": "→", "action": "cursorRight"},
                         {
-                            "labelKey": "keyboard.key.enter",
-                            "action": "enter",
-                            "wide": True,
+                            "labelKey": "keyboard.key.space",
+                            "action": "space",
                         },
-                    ],
+                        {
+                            "label": "⏎",
+                            "action": "enter",
+                            # "wide": True,
+                        },
+                        {"label": "⌫", "action": "backspace"},
+                    ],                    
+                    "1 2 3 4 5 6 7 8 9 0",
+                    "+ - * / _ < > % ? |",
+                    "\" ' ` ~ ^ & @ # $ !",
+                    "( ) [ ] { } : , . =",
                 ],
             },
         },
