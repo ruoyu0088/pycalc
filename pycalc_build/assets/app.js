@@ -1592,9 +1592,12 @@
   }
 
   function renderConsole() {
-    revokeObjectUrls();
     const host = $('console');
+    // Detach old figures before revoking their Blob URLs.  Safari can keep
+    // showing broken-image placeholders if the URL is revoked while the old
+    // <img> is still connected.
     host.innerHTML = '';
+    revokeObjectUrls();
     if (!state.history.length) {
       host.appendChild(emptyConsole());
       return;
@@ -1606,6 +1609,15 @@
   function scrollToBottom() {
     const host = $('console');
     host.scrollTop = host.scrollHeight;
+  }
+
+  function redrawSessionHistory() {
+    if (!state.activeId) return;
+    // Rebuild every entry and, importantly, recreate Blob URLs for figures.
+    // Safari can leave <img> elements broken after a session switch even when
+    // the stored image Blob is still valid.
+    renderConsole();
+    toast('session.redrawn');
   }
 
   function updateHistoryButtons() {
@@ -1832,7 +1844,8 @@
     $('session-select').disabled = state.busy || !state.ready;
     $('session-new').disabled = state.busy || !state.ready;
     $('session-rename').disabled = state.busy || !state.ready;
-    $('session-clear').disabled = state.busy || !state.ready;
+    $('session-redraw').disabled = state.busy || !state.activeId;
+    $('session-sweep').disabled = state.busy || !state.ready;
     $('session-delete').disabled = state.busy || !state.ready;
     $('language-select').disabled = state.busy;
     $('run-key').disabled = state.busy;
@@ -2007,7 +2020,8 @@
     $('session-select').addEventListener('change', (event) => switchSession(event.target.value));
     $('session-new').addEventListener('click', newSession);
     $('session-rename').addEventListener('click', renameSession);
-    $('session-clear').addEventListener('click', () => clearCurrentSession(true));
+    $('session-redraw').addEventListener('click', redrawSessionHistory);
+    $('session-sweep').addEventListener('click', () => clearCurrentSession(true));
     $('session-delete').addEventListener('click', deleteSession);
     $('history-undo').addEventListener('click', undoHistory);
     $('history-redo').addEventListener('click', redoHistory);
