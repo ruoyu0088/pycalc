@@ -871,6 +871,26 @@ def test_full_314() -> None:
         assert browser.eval("[...document.querySelectorAll('pre.result')].at(-1).textContent") == "[1, 2, 3]"
         browser.eval("window.__pycalc.setDisplaySettings({numpyOutput: 'default'})")
 
+        # A 1-D array is a single table row with no row/column headers. When it
+        # exceeds the maximum column count it falls back to Pretty text.
+        browser.eval(
+            "window.__pycalc.setDisplaySettings({numpyOutput: 'table', numpyCols: 5})"
+        )
+        time.sleep(0.2)
+        assert browser.eval("document.querySelectorAll('.np-table.np-vector thead th').length") == 0
+        assert browser.eval("document.querySelectorAll('.np-table.np-vector tbody tr').length") == 1
+        assert browser.eval(
+            "[...document.querySelectorAll('.np-table.np-vector tbody td')]"
+            ".map(x => x.textContent)"
+        ) == ["1", "2", "3"]
+        browser.eval("window.__pycalc.setDisplaySettings({numpyCols: 2})")
+        time.sleep(0.2)
+        assert browser.eval("document.querySelectorAll('.np-table.np-vector').length") == 0
+        assert browser.eval("[...document.querySelectorAll('pre.result')].at(-1).textContent") == "[1, 2, 3]"
+        browser.eval(
+            "window.__pycalc.setDisplaySettings({numpyOutput: 'default', numpyCols: 10})"
+        )
+
         matrix = browser.run_cell(
             "np.array([[-2.82998, -1.71821, 3.94834],"
             " [-1.39422, -1.4325, 3.04898],"

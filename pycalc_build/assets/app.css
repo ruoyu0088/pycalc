@@ -310,6 +310,7 @@ button, select, textarea { font: inherit; }
 .np-table th, .np-table td { padding: 3px 7px; border-bottom: 1px solid var(--border-soft); border-right: 1px solid var(--border-soft); text-align: right; white-space: nowrap; }
 .np-table th { background: var(--panel-2, var(--panel)); color: var(--muted); position: sticky; top: 0; }
 .np-table th:first-child, .np-table td:first-child { color: var(--muted); text-align: left; }
+.np-table.np-vector td:first-child { color: var(--text); text-align: right; }
 .np-tabs { display: flex; gap: 3px; flex-wrap: wrap; margin: 4px 0; }
 .np-tab { padding: 3px 8px; border: 1px solid var(--border); border-radius: 5px; background: transparent; color: var(--muted); font: inherit; font-size: 11.5px; cursor: pointer; }
 .np-tab.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }

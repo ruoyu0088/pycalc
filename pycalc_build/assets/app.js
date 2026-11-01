@@ -1759,10 +1759,29 @@
     return wrap;
   }
 
+  function numpyVectorTable(data) {
+    if (!Array.isArray(data) || data.length > state.ui.numpyCols) return null;
+    const wrap = el('div', 'np-table-wrap');
+    const table = document.createElement('table');
+    table.className = 'np-table np-vector';
+    const body = document.createElement('tbody');
+    const row = document.createElement('tr');
+    for (const value of data) {
+      row.appendChild(el('td', '', formatArrayCell(value, state.ui.floatDigits)));
+    }
+    body.appendChild(row);
+    table.appendChild(body);
+    wrap.appendChild(table);
+    return wrap;
+  }
+
   function numpyTable(array) {
     if (!array || !Array.isArray(array.shape)) return null;
     const maxRows = state.ui.numpyRows;
     const maxCols = state.ui.numpyCols;
+    if (array.shape.length === 1) {
+      return numpyVectorTable(array.data);
+    }
     if (array.shape.length === 2) {
       return numpyArrayTable(array.data, maxRows, maxCols);
     }
@@ -1886,11 +1905,17 @@
         } else if (
           state.ui.numpyOutput === 'table'
           && entry.resultArray
-          && (entry.resultArray.shape.length === 2 || entry.resultArray.shape.length === 3)
+          && [1, 2, 3].includes(entry.resultArray.shape.length)
         ) {
           const table = numpyTable(entry.resultArray);
-          if (table) body.appendChild(table);
-          else body.appendChild(el('pre', 'result', entryResultText(entry)));
+          if (table) {
+            body.appendChild(table);
+          } else {
+            const pretty = entry.resultArray.shape.length === 1
+              ? formatArrayPretty(entry.resultArray)
+              : null;
+            body.appendChild(el('pre', 'result', pretty || entryResultText(entry)));
+          }
         } else {
           let math = null;
           if (state.ui.sympyOutput === 'all') {
