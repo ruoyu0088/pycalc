@@ -2,6 +2,10 @@
 
 [中文](README.md) | [English](README.en.md) | **[日本語](README.ja.md)**
 
+![IPhoneの画面](doc/iphone_shot.png)
+
+https://ruoyu0088.github.io/pycalc
+
 PyCalc は**単一ファイルのオフライン Python 電卓ジェネレーター**です。ビルドスクリプトが Pyodide ランタイムと選択した科学計算ライブラリをすべて 1 つの HTML にインライン化します。この HTML はダブルクリックするか `file://` で開くだけで動作し、ネットワークにアクセスせず、Jupyter/IPython 風の入出力、複数の名前付きセッション、そして再読み込みをまたいで復元される履歴と変数を備えています。
 
 ```

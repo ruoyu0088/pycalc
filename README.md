@@ -2,6 +2,10 @@
 
 **[中文](README.md)** | [English](README.en.md) | [日本語](README.ja.md)
 
+![画面截图](doc/iphone_shot.png)
+
+https://ruoyu0088.github.io/pycalc
+
 PyCalc 是一个**单文件离线 Python 计算器生成器**。构建脚本把 Pyodide 运行时和选定的科学计算库全部内联进一个 HTML；这个 HTML 可以双击、通过 `file://` 打开，不访问网络，具备 Jupyter/IPython 风格的输入输出、多个命名会话，以及跨刷新恢复的历史和变量。
 
 ```

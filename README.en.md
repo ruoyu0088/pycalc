@@ -2,6 +2,10 @@
 
 [中文](README.md) | **[English](README.en.md)** | [日本語](README.ja.md)
 
+![IPhone Screen](doc/iphone_shot.png)
+
+https://ruoyu0088.github.io/pycalc
+
 PyCalc is a **single-file offline Python calculator generator**. The build script inlines the Pyodide runtime and the selected scientific computing libraries into one HTML file; that HTML can be opened by double-clicking or via `file://`, it makes no network requests, and it offers Jupyter/IPython-style input and output, multiple named sessions, and history and variables that survive a refresh.
 
 ```
