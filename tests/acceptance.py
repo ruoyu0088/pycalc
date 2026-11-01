@@ -624,6 +624,17 @@ def test_worker_responsive() -> None:
             time.sleep(0.02)
         assert hidden is True
         assert ready is False
+        status = browser.eval(
+            "(() => { const n = document.getElementById('runtime-status');"
+            " const t = document.querySelector('.topbar');"
+            " return {position: getComputedStyle(n).position,"
+            "         inTopbar: t.contains(n),"
+            "         hidden: n.classList.contains('hidden'),"
+            "         text: n.textContent}; })()"
+        )
+        assert status["position"] == "fixed", status
+        assert status["inTopbar"] is False, status
+        assert status["hidden"] is False, status
         browser.eval("document.querySelector('.cm-content').focus()")
         started = time.time()
         browser.call("Input.insertText", {"text": "1+1"})

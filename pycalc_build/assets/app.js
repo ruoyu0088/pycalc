@@ -295,18 +295,25 @@
     renderStatus();
   }
 
+  function positionRuntimeStatus() {
+    const node = $('runtime-status');
+    if (!node || node.classList.contains('hidden')) return;
+    const topbar = document.querySelector('.topbar');
+    const bottom = topbar ? topbar.getBoundingClientRect().bottom : 0;
+    node.style.top = `${Math.round(bottom + 8)}px`;
+  }
+
   function renderStatus() {
-    const node = $('save-status');
+    const node = $('runtime-status');
     if (!node) return;
     if (!state.runtimeStatus) {
-      // The normal save indicator is intentionally hidden to save titlebar
-      // space; only startup/restore progress uses this slot.
       node.textContent = '';
-      node.classList.remove('runtime-loading');
+      node.classList.add('hidden');
       return;
     }
     node.textContent = I18n.t(state.runtimeStatus.key, state.runtimeStatus.params);
-    node.classList.add('runtime-loading');
+    node.classList.remove('hidden');
+    positionRuntimeStatus();
   }
 
   function setEngine(engine) {
@@ -2001,6 +2008,7 @@
     const mobile = window.innerWidth <= 880;
     const hidden = mobile && state.ui.sessionBarHidden;
     document.body.classList.toggle('session-bar-hidden', hidden);
+    positionRuntimeStatus();
     const button = $('session-bar-toggle');
     if (!button) return;
     button.textContent = hidden ? '▼' : '▲';
