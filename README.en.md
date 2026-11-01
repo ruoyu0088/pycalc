@@ -103,6 +103,21 @@ pd = pandas
 
 All GUI settings (including this library definition) are stored in `gui_settings.json` and restored automatically the next time you start. Configurations from older versions that only saved a `libs` list are migrated automatically to the new text format.
 
+### Remote CSV / HTTP
+
+Every build automatically embeds `pyodide-http` as a **non-selectable mandatory package** and runs `pyodide_http.patch_all()` during Python startup. Polars can therefore read URL sources through the browser:
+
+```python
+import polars as pl
+df = pl.read_csv("https://example.com/data.csv")
+```
+
+Limits:
+
+- The remote server must send CORS headers such as `Access-Control-Allow-Origin: *`; this does not bypass the browser same-origin policy.
+- The whole response is downloaded into memory before Polars parses it, so very large CSVs need a lot of memory.
+- The patch targets Python `urllib`/`requests`; in the current Pyodide build Polars reads URLs through `urllib.request.urlopen`, so it applies.
+
 ---
 
 ## Automatic GitHub Pages Deployment

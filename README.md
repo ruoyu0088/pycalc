@@ -103,6 +103,21 @@ pd = pandas
 
 GUI 的所有设置（包括这段库定义）保存在 `gui_settings.json`；下次启动自动恢复。旧版本只保存 `libs` 列表的配置会自动迁移成新文本格式。
 
+### 远程 CSV / HTTP
+
+构建会自动把 `pyodide-http` 作为**不可勾选的必须包**内联，并在 Python 启动时执行 `pyodide_http.patch_all()`。因此 Polars 可以通过浏览器网络读取 URL：
+
+```python
+import polars as pl
+df = pl.read_csv("https://example.com/data.csv")
+```
+
+限制：
+
+- 远程服务器必须返回 CORS 头，例如 `Access-Control-Allow-Origin: *`；这不是绕过浏览器同源策略。
+- 响应会先完整进入内存，再交给 Polars，超大 CSV 可能占用较多内存。
+- 该补丁针对 Python `urllib`/`requests`；Polars 的 URL 路径在当前 Pyodide 构建中走 `urllib.request.urlopen`，因此适用。
+
 ---
 
 ## GitHub Pages 自动部署
