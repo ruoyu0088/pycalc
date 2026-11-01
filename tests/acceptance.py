@@ -274,6 +274,11 @@ def test_mobile_keyboard() -> None:
             "[...document.querySelectorAll('.prompt-btn')]"
             ".every(x => getComputedStyle(x).display === 'none')"
         ) is True
+        borders = browser.eval(
+            "[getComputedStyle(document.querySelector('.io-input')).borderLeftColor,"
+            " getComputedStyle(document.querySelector('.io-output')).borderLeftColor]"
+        )
+        assert borders[0] != borders[1], borders
         tap_keyboard(browser, "[1]")
         time.sleep(0.2)
         assert browser.eval("document.body.classList.contains('hide-prompts')") is False

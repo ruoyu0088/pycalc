@@ -1890,13 +1890,13 @@
 
   function makeCell(entry) {
     const cell = el('div', 'entry');
-    const inputRow = el('div', 'io-row');
+    const inputRow = el('div', 'io-row io-input');
     inputRow.appendChild(promptButton('in', entry.n, entry));
     inputRow.appendChild(el('pre', 'code', entry.code));
     cell.appendChild(inputRow);
 
     if (hasOutput(entry)) {
-      const outputRow = el('div', 'io-row');
+      const outputRow = el('div', 'io-row io-output');
       outputRow.appendChild(promptButton('out', entry.n, entry));
       const body = el('div', 'output-body');
       if (entry.stdout) body.appendChild(el('pre', 'stream', entry.stdout));
@@ -2024,12 +2024,12 @@
     if (empty) empty.remove();
 
     const cell = el('div', 'entry');
-    const inputRow = el('div', 'io-row');
+    const inputRow = el('div', 'io-row io-input');
     inputRow.appendChild(promptButton('in', entry.n, entry));
     inputRow.appendChild(el('pre', 'code', entry.code));
     cell.appendChild(inputRow);
 
-    const outputRow = el('div', 'io-row hidden');
+    const outputRow = el('div', 'io-row io-output hidden');
     outputRow.appendChild(promptButton('out', entry.n, entry));
     const body = el('div', 'output-body');
     const stdoutEl = el('pre', 'stream');
