@@ -32,6 +32,10 @@ from .runtime import RuntimeSpec, ensure_runtime, ensure_wheel
 
 Log = Callable[[str], None]
 
+# Always present, but never shown as a user-selectable library: it patches
+# Python HTTP libraries so Polars can read http(s) CSV/JSON sources in Pyodide.
+MANDATORY_PACKAGES = ("pyodide-http",)
+
 
 @dataclass
 class BuildConfig:
@@ -171,8 +175,9 @@ def build(config: BuildConfig, log: Log | None = None) -> BuildResult:
     say = _make_logger(log)
     user_libs = normalize_libs(config.libs)
     roots = list(user_libs)
-    if PERSISTENCE_PACKAGE not in roots:
-        roots.append(PERSISTENCE_PACKAGE)
+    for package in (PERSISTENCE_PACKAGE, *MANDATORY_PACKAGES):
+        if package not in roots:
+            roots.append(package)
 
     def t(key: str, **params) -> str:
         return tr(config.lang, key, **params)

@@ -22,6 +22,17 @@ import warnings
 
 import __main__
 
+# pyodide-http is a mandatory build package.  Patch Python's urllib before any
+# user code runs so libraries such as Polars can read remote URLs via fetch().
+_PYCALC_HTTP_PATCHED = False
+try:
+    import pyodide_http
+
+    pyodide_http.patch_all()
+    _PYCALC_HTTP_PATCHED = True
+except Exception:
+    pass
+
 _PYCALC_PROTECTED = {
     "__name__",
     "__doc__",

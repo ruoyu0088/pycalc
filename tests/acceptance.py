@@ -613,6 +613,35 @@ def test_dataframe_summary() -> None:
         )
         assert headers.count("…") == 1, headers
         assert headers[0] == "#", headers
+
+        # pyodide-http is a mandatory package and patches urllib at startup.
+        # Polars uses urllib for URL sources, so this must work with CORS.
+        class CsvHandler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *_args):
+                pass
+
+            def do_GET(self):
+                body = b"a,b\n1,2\n3,4\n"
+                self.send_response(200)
+                self.send_header("Content-Type", "text/csv")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), CsvHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            url = f"http://127.0.0.1:{server.server_address[1]}/data.csv"
+            remote = browser.run_cell(f"remote = pl.read_csv('{url}')\nremote")
+            assert remote["status"] == "ok", remote
+            table = browser.eval("window.__pycalc.lastEntry().resultTable")
+            assert table and table["rows"] == [[1, 2], [3, 4]], table
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
     log("  PASS DataFrame summary")
 
 
