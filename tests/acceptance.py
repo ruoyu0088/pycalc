@@ -354,18 +354,53 @@ def test_mobile_keyboard() -> None:
         tap_keyboard(browser, "×")
         time.sleep(0.3)
 
+        # Manual variable shortcuts come first; a user variable with the same
+        # name is not repeated.
+        browser.run_cell("x = 123\nq = 7")
+
         # A real touch (not just a synthetic PointerEvent) must not be
         # swallowed by the backdrop's synthetic click after pointerup.
         touch_keyboard_drawer(browser, "variables")
         time.sleep(0.35)
         assert browser.eval("document.getElementById('mk-drawer').classList.contains('open')") is True
+        labels = browser.eval(
+            "[...document.querySelectorAll('.mk-drawer-item')].map(x => x.textContent)"
+        )
+        assert labels[:6] == ["x", "y", "z", "a", "b", "c"], labels
+        assert labels.count("x") == 1, labels
+        assert "q" in labels, labels
         tap_keyboard(browser, "×")
         time.sleep(0.3)
 
         browser.eval("window.__pycalc.setEditorText('')")
+        tap_keyboard_drawer(browser, "functions")
+        time.sleep(0.2)
+        labels = browser.eval(
+            "[...document.querySelectorAll('.mk-drawer-item')].map(x => x.textContent)"
+        )
+        assert labels[:3] == ["print", "range", "enumerate"], labels
+        tap_keyboard(browser, "print")
+        assert browser.eval("window.__pycalc.getEditorValue()") == "print("
+
+        browser.run_cell("def user_fn(a):\n    return a")
+        browser.eval("window.__pycalc.setEditorText('')")
+        tap_keyboard_drawer(browser, "functions")
+        time.sleep(0.2)
+        labels = browser.eval(
+            "[...document.querySelectorAll('.mk-drawer-item')].map(x => x.textContent)"
+        )
+        assert labels[0] == "print", labels
+        assert labels[-1] == "user_fn", labels
+        tap_keyboard(browser, "user_fn")
+        assert browser.eval("window.__pycalc.getEditorValue()") == "user_fn("
+
+        browser.eval("window.__pycalc.setEditorText('')")
         tap_keyboard_drawer(browser, "math")
         time.sleep(0.2)
-        assert browser.eval("document.querySelectorAll('.mk-drawer-item').length") == 27
+        assert browser.eval("document.querySelectorAll('.mk-drawer-item').length") == 26
+        assert "range" not in browser.eval(
+            "[...document.querySelectorAll('.mk-drawer-item')].map(x => x.textContent)"
+        )
         tap_keyboard(browser, "sin")
         assert browser.eval("window.__pycalc.getEditorValue()") == "sin("
 

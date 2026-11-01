@@ -58,10 +58,14 @@ class KeyboardLayoutTests(unittest.TestCase):
         drawers = LAYOUT["drawers"]
         self.assertEqual(set(drawers), {"variables", "functions", "libraries", "math", "python"})
         self.assertTrue(drawers["libraries"]["tabs"])
+        self.assertEqual(drawers["variables"]["items"], ["x", "y", "z", "a", "b", "c"])
         self.assertEqual(drawers["functions"]["suffix"], "(")
+        self.assertIn("print", drawers["functions"]["items"])
+        self.assertIn("range", drawers["functions"]["items"])
         math = drawers["math"]["items"]
-        self.assertEqual(len(math), 27)
-        self.assertEqual(len({item["label"] for item in math}), 27)
+        self.assertEqual(len(math), 26)
+        self.assertEqual(len({item["label"] for item in math}), 26)
+        self.assertNotIn("range", {item["label"] for item in math})
         self.assertTrue(any(item["label"] == "sin" and item["insert"] == "sin(" for item in math))
         self.assertTrue(any(item["label"] == "pi" and item["insert"] == "pi" for item in math))
 

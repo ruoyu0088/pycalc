@@ -149,6 +149,9 @@ LAYOUT = {
             "source": "variables",
             "insertField": "name",
             "emptyKey": "keyboard.empty.variables",
+            # Manual entries appear first; user variables with the same name
+            # are omitted from the automatic part.
+            "items": ["x", "y", "z", "a", "b", "c"],
         },
         "functions": {
             "titleKey": "keyboard.button.functions",
@@ -156,6 +159,13 @@ LAYOUT = {
             "insertField": "name",
             "suffix": "(",
             "emptyKey": "keyboard.empty.functions",
+            # Manual entries appear first, then functions defined in the
+            # current session.  Add/remove names here to customise the drawer.
+            "items": [
+                "print", "range", "enumerate", "len", "int", "float", "str",
+                "list", "dict", "set", "tuple", "sum", "min", "max",
+                "sorted", "zip", "map", "filter",
+            ],
         },
         "libraries": {
             "titleKey": "keyboard.button.libraries",
@@ -193,7 +203,6 @@ LAYOUT = {
                 {"label": "tau", "insert": "tau"},
                 {"label": "inf", "insert": "inf"},
                 {"label": "nan", "insert": "nan"},
-                {"label": "range", "insert": "range("},
             ],
         },
         "python": {

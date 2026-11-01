@@ -467,11 +467,24 @@
   }
 
   function drawerItems(def) {
+    const manual = Array.isArray(def.items) ? def.items : [];
     let items = [];
-    if (def.source === 'variables') items = state.callbacks.getVariables ? state.callbacks.getVariables() : [];
-    else if (def.source === 'functions') items = state.callbacks.getFunctions ? state.callbacks.getFunctions() : [];
-    else if (def.source === 'libraries') items = state.callbacks.getLibraries ? state.callbacks.getLibraries() : [];
-    else if (def.items) items = def.items;
+    if (def.source === 'variables' || def.source === 'functions') {
+      const auto = def.source === 'variables'
+        ? (state.callbacks.getVariables ? state.callbacks.getVariables() : [])
+        : (state.callbacks.getFunctions ? state.callbacks.getFunctions() : []);
+      const manualNames = new Set(manual.map((item) => (
+        typeof item === 'string' ? item : (item.label || item.name || item.insert || '')
+      )));
+      items = [
+        ...manual,
+        ...(Array.isArray(auto) ? auto : []).filter((item) => !manualNames.has(item.name)),
+      ];
+    } else if (def.source === 'libraries') {
+      items = state.callbacks.getLibraries ? state.callbacks.getLibraries() : [];
+    } else if (manual.length) {
+      items = manual;
+    }
     return Array.isArray(items) ? items : [];
   }
 
@@ -691,7 +704,8 @@
       button.textContent = parts.label;
       if (parts.title) button.title = parts.title;
       bindPress(button, () => {
-        insertText(parts.value + (def.suffix || ''));
+        const suffix = def.suffix || '';
+        insertText(parts.value + (suffix && !String(parts.value).endsWith(suffix) ? suffix : ''));
         closeDrawer();
       });
       list.appendChild(button);
