@@ -2467,6 +2467,7 @@
       showPrompts: () => state.ui.showPrompts,
       togglePrompts: () => togglePrompts(),
       moveCursor: (direction) => editor.moveCursor && editor.moveCursor(direction),
+      moveCursorWord: (direction) => editor.moveCursorWord && editor.moveCursorWord(direction),
       historyOrCursor: (direction) => {
         if (editor.moveHistoryOrCursor) editor.moveHistoryOrCursor(direction);
         if (editor.focus) editor.focus();
@@ -2617,6 +2618,7 @@
         undo: () => cm.undo(),
         deleteCharBefore: () => cm.deleteCharBefore(),
         moveCursor: (direction) => cm.moveCursor(direction),
+        moveCursorWord: (direction) => cm.moveCursorWord(direction),
         moveHistoryOrCursor: (direction) => cm.moveHistoryOrCursor(direction),
         moveLineStart: () => cm.moveLineStart(),
         moveLineEnd: () => cm.moveLineEnd(),

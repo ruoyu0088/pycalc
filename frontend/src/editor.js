@@ -122,6 +122,51 @@ function atLastLine(view) {
   return view.state.doc.lineAt(selection.head).number === view.state.doc.lines;
 }
 
+// Move by editor tokens rather than single characters: skip whitespace, then
+// consume a full identifier or numeric literal.  This is the behaviour the
+// mobile left/right cursor keys need without relying on Ctrl/Alt modifiers.
+function moveCursorWord(view, direction) {
+  const selection = view.state.selection.main;
+  const line = view.state.doc.lineAt(selection.head);
+  const text = line.text;
+  let offset = selection.head - line.from;
+  const isSpace = (char) => /\s/.test(char);
+  const identifier = /[\p{L}_][\p{L}\p{N}_]*/u;
+  const number = /(?:\d+\.\d*|\.\d+|\d+)(?:[eE][+-]?\d+)?/;
+
+  if (direction < 0) {
+    while (offset > 0 && isSpace(text[offset - 1])) offset -= 1;
+    if (offset === 0) {
+      view.dispatch({ selection: { anchor: line.from }, scrollIntoView: true });
+      return;
+    }
+    const before = text.slice(0, offset);
+    const identMatch = before.match(new RegExp(`${identifier.source}$`, 'u'));
+    const numberMatch = before.match(new RegExp(`${number.source}$`));
+    let length = 1;
+    if (identMatch) length = Math.max(length, identMatch[0].length);
+    if (numberMatch) length = Math.max(length, numberMatch[0].length);
+    offset = Math.max(0, offset - length);
+  } else {
+    while (offset < text.length && isSpace(text[offset])) offset += 1;
+    if (offset >= text.length) {
+      view.dispatch({ selection: { anchor: line.to }, scrollIntoView: true });
+      return;
+    }
+    const after = text.slice(offset);
+    const identMatch = after.match(new RegExp(`^${identifier.source}`, 'u'));
+    const numberMatch = after.match(new RegExp(`^${number.source}`));
+    let length = 1;
+    if (identMatch) length = Math.max(length, identMatch[0].length);
+    if (numberMatch) length = Math.max(length, numberMatch[0].length);
+    offset = Math.min(text.length, offset + length);
+  }
+  view.dispatch({
+    selection: { anchor: line.from + offset },
+    scrollIntoView: true,
+  });
+}
+
 function findCallContext(state) {
   const position = state.selection.main.head;
   const text = state.doc.toString();
@@ -516,6 +561,7 @@ export function create(parent, options = {}) {
     moveCursor: (direction) => {
       (direction < 0 ? cursorCharLeft : cursorCharRight)(view);
     },
+    moveCursorWord: (direction) => moveCursorWord(view, direction),
     moveHistoryOrCursor: (delta) => {
       if (delta < 0) {
         if (atFirstLine(view) && onHistory(-1) === true) return;

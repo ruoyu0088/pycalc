@@ -233,7 +233,8 @@
       cursor.title = t(titleKey);
       cursor.setAttribute('aria-label', cursor.title);
       bindPress(cursor, () => {
-        if (state.callbacks.moveCursor) state.callbacks.moveCursor(direction);
+        if (state.callbacks.moveCursorWord) state.callbacks.moveCursorWord(direction);
+        else if (state.callbacks.moveCursor) state.callbacks.moveCursor(direction);
       });
       host.appendChild(cursor);
     }
@@ -389,10 +390,12 @@
         if (state.callbacks.backspace) state.callbacks.backspace();
         break;
       case 'cursorLeft':
-        if (state.callbacks.moveCursor) state.callbacks.moveCursor(-1);
+        if (state.callbacks.moveCursorWord) state.callbacks.moveCursorWord(-1);
+        else if (state.callbacks.moveCursor) state.callbacks.moveCursor(-1);
         break;
       case 'cursorRight':
-        if (state.callbacks.moveCursor) state.callbacks.moveCursor(1);
+        if (state.callbacks.moveCursorWord) state.callbacks.moveCursorWord(1);
+        else if (state.callbacks.moveCursor) state.callbacks.moveCursor(1);
         break;
       case 'cursorUp':
         if (state.callbacks.historyOrCursor) state.callbacks.historyOrCursor(-1);
