@@ -48,8 +48,8 @@ LAYOUT = {
                         {"label": "@", "insert": "@"},
                         {"label": "(", "insert": "("},
                         {"label": ")", "insert": ")"},
-                        {"label": "←", "action": "cursorLeft"},
-                        {"label": "→", "action": "cursorRight"},
+                        {"label": "[", "insert": "["},
+                        {"label": "]", "insert": "]"},
                         {"label": "⌫", "action": "backspace"},
                     ],
                     [
@@ -80,11 +80,9 @@ LAYOUT = {
                         {"label": ",", "insert": ","},
                     ],
                     [
-                        {"label": "␣", "insert": " "},
                         {"label": "⏎", "insert": "\n"},
-                        {"label": "[", "insert": "["},
-                        {"label": "]", "insert": "]"},
-                        {"label": "0", "insert": "0"},
+                        {"label": "␣", "insert": " ", "span": 2},
+                        {"label": "0", "insert": "0", "span": 2},
                         {"label": "▶", "action": "run", "style": "run", "span": 2},
                     ],
                 ],
@@ -101,7 +99,7 @@ LAYOUT = {
                         {"label": "←", "action": "cursorLeft"},
                         {"label": "→", "action": "cursorRight"},
                         {
-                            "labelKey": "keyboard.key.space",
+                            "label": "␣",
                             "action": "space",
                         },
                         {
@@ -124,7 +122,7 @@ LAYOUT = {
                         {"label": "←", "action": "cursorLeft"},
                         {"label": "→", "action": "cursorRight"},
                         {
-                            "labelKey": "keyboard.key.space",
+                            "label": "␣",
                             "action": "space",
                         },
                         {
