@@ -620,23 +620,40 @@ pre.error {
 .library-list { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
 .lib-chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
+  padding: 2px 9px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: var(--panel);
+  background: transparent;
   cursor: pointer;
   user-select: none;
-  color: var(--text);
+  color: var(--muted);
   font-family: var(--mono);
   font-size: 11.5px;
+  font-weight: 500;
+  transition: color .12s ease, background .12s ease, border-color .12s ease;
 }
 
-.lib-chip:hover { background: var(--panel-2); }
-.lib-chip input { margin: 0; accent-color: var(--accent); }
-.lib-chip.checked { border-color: var(--accent); background: var(--accent-soft); }
+.lib-chip:hover { background: var(--panel-2); color: var(--text); }
+.lib-chip input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.lib-chip:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lib-chip.checked {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.lib-chip.checked:hover { background: var(--accent-soft); color: var(--accent); }
+.lib-chip:has(input:disabled) { opacity: .55; cursor: default; }
 
 .library-note { color: var(--muted); font-size: 11.5px; }
 
