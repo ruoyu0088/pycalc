@@ -672,6 +672,16 @@ pre.error {
   line-height: 1;
 }
 
+.history-btn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .sympy-output-toggle.hidden { display: none !important; }
 
 .editor-shell {

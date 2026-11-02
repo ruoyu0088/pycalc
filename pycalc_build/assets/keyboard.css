@@ -64,9 +64,10 @@
   line-height: 1;
 }
 
-.mk-clear-tab.pressed {
-  background: var(--red-soft);
-  color: var(--red);
+.mk-hcursor-tab {
+  padding: 4px 10px;
+  font-size: 15px;
+  line-height: 1;
 }
 
 .mk-collapse-tab {

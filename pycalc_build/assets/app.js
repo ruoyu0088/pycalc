@@ -2509,6 +2509,10 @@
     $('session-delete').addEventListener('click', deleteSession);
     $('history-undo').addEventListener('click', undoHistory);
     $('history-redo').addEventListener('click', redoHistory);
+    $('editor-clear').addEventListener('click', () => {
+      setEditorText('', true);
+      if (editor && editor.focus) editor.focus();
+    });
     $('overlay-retry').addEventListener('click', () => location.reload());
     $('language-select').addEventListener('change', (event) => setLanguage(event.target.value));
     $('run-key').addEventListener('change', (event) => applyRunKey(event.target.value));

@@ -133,7 +133,6 @@
     calc: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"></rect><path d="M8 7h8M8 11h1m3 0h1m3 0h1M8 14h1m3 0h1m3 0h1M8 17h1m3 0h1"></path></svg>',
     en: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h9M8.5 3v2M6 5c0 4 3 7 7 8M11 5c0 4-3 7-7 8"></path><path d="m13 20 3.5-8 3.5 8M14.5 17h4"></path></svg>',
     autocomplete: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3Z"></path><path d="m19 15 .7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7L19 15Z"></path></svg>',
-    clear: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16 7-7 5 5-5 5H7l-3-3Z"></path><path d="m9 9 5 5M4 21h16"></path></svg>',
   };
 
   function setTabIcon(node, name, label) {
@@ -222,15 +221,22 @@
     });
     // host.appendChild(signatureTab);
 
-    const clear = document.createElement('div');
-    clear.setAttribute('role', 'button');
-    clear.setAttribute('tabindex', '-1');
-    clear.className = 'mk-tab mk-clear-tab';
-    setTabIcon(clear, 'clear', t('keyboard.key.clearInput'));
-    bindPress(clear, () => {
-      if (state.callbacks.clear) state.callbacks.clear();
-    });
-    host.appendChild(clear);
+    for (const [label, direction, titleKey] of [
+      ['←', -1, 'keyboard.key.cursorLeft'],
+      ['→', 1, 'keyboard.key.cursorRight'],
+    ]) {
+      const cursor = document.createElement('div');
+      cursor.setAttribute('role', 'button');
+      cursor.setAttribute('tabindex', '-1');
+      cursor.className = 'mk-tab mk-hcursor-tab';
+      cursor.textContent = label;
+      cursor.title = t(titleKey);
+      cursor.setAttribute('aria-label', cursor.title);
+      bindPress(cursor, () => {
+        if (state.callbacks.moveCursor) state.callbacks.moveCursor(direction);
+      });
+      host.appendChild(cursor);
+    }
 
     const collapse = document.createElement('div');
     collapse.setAttribute('role', 'button');
