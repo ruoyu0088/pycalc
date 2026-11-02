@@ -96,8 +96,8 @@ LAYOUT = {
                 "letters": [
                     [
                         {"label": "123", "action": "view:numbers"},
-                        {"label": "←", "action": "cursorLeft"},
-                        {"label": "→", "action": "cursorRight"},
+                        {"label": "←", "action": "cursorLeftWord"},
+                        {"label": "→", "action": "cursorRightWord"},
                         {
                             "label": "␣",
                             "action": "space",
@@ -119,8 +119,8 @@ LAYOUT = {
                 "numbers": [
                     [
                         {"label": "ABC", "action": "view:letters"},
-                        {"label": "←", "action": "cursorLeft"},
-                        {"label": "→", "action": "cursorRight"},
+                        {"label": "←", "action": "cursorLeftWord"},
+                        {"label": "→", "action": "cursorRightWord"},
                         {
                             "label": "␣",
                             "action": "space",
