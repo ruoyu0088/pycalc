@@ -39,7 +39,9 @@
 
     const keyboard = document.createElement('div');
     keyboard.className = 'mobile-keyboard';
-    document.body.classList.add('mobile-keyboard-active');
+    if (COARSE && COARSE.matches) {
+      document.body.classList.add('mobile-keyboard-active');
+    }
     keyboard.innerHTML = `
       <div class="mk-tabs" id="mk-tabs"></div>
       <div class="mk-panel" id="mk-panel"></div>
@@ -797,20 +799,24 @@
   }
 
   function initMobileKeyboard(options) {
-    if (!COARSE || !COARSE.matches) return null;
     if (state.initialized) return window.__pycalcKeyboard || null;
     if (!options || !options.layout) {
       console.warn('[PyCalc] keyboard layout is missing');
       return null;
     }
 
+    const coarsePointer = Boolean(COARSE && COARSE.matches);
     state.callbacks = options;
     state.layout = options.layout;
     translate = typeof options.t === 'function' ? options.t : (key) => key;
     state.activeTab = (state.layout.tabs[0] && state.layout.tabs[0].id) || 'calc';
+    // Desktop also gets the virtual keyboard, but starts collapsed so only the
+    // top row (including arrow keys) is visible. Touch devices keep expanded.
+    state.collapsed = !coarsePointer;
 
     createKeyboardDOM();
-    disableSystemKeyboard();
+    if (coarsePointer) disableSystemKeyboard();
+    setCollapsed(state.collapsed);
     renderTabs();
     renderActiveTab();
 
