@@ -2256,7 +2256,9 @@
   function applyTheme(theme, persist = true) {
     state.ui.theme = theme === 'dark' ? 'dark' : 'light';
     document.documentElement.dataset.theme = state.ui.theme;
-    $('theme-toggle').textContent = state.ui.theme === 'dark' ? '☀' : '☾';
+    $('theme-toggle').innerHTML = state.ui.theme === 'dark'
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8Z"></path></svg>';
     $('theme-toggle').title = I18n.t('theme.toggleTitle');
     if (editor && typeof editor.setTheme === 'function') editor.setTheme(state.ui.theme);
     if (py) {
@@ -2385,7 +2387,9 @@
     positionRuntimeStatus();
     const button = $('session-bar-toggle');
     if (!button) return;
-    button.textContent = hidden ? '▼' : '▲';
+    button.innerHTML = hidden
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 10 6 6 6-6"></path></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6"></path></svg>';
     button.title = I18n.t(hidden ? 'session.showBar' : 'session.hideBar');
     button.setAttribute('aria-label', button.title);
     button.setAttribute('aria-expanded', String(!hidden));
@@ -2721,7 +2725,9 @@
     document.documentElement.dataset.theme = state.ui.theme;
     $('language-select').value = state.ui.language;
     $('run-key').value = state.ui.runKey;
-    $('theme-toggle').textContent = state.ui.theme === 'dark' ? '☀' : '☾';
+    $('theme-toggle').innerHTML = state.ui.theme === 'dark'
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8Z"></path></svg>';
     window.__pycalcRunKeyMode = state.ui.runKey;
     applySidebar();
     applySessionBar();

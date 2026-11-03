@@ -184,6 +184,16 @@ button, select, textarea { font: inherit; }
 .icon-btn.danger:hover { background: var(--red-soft); border-color: var(--red); color: var(--red); }
 .icon-btn:disabled, select:disabled { opacity: .5; cursor: not-allowed; }
 
+.icon-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .top-actions {
   margin-left: auto;
   display: flex;

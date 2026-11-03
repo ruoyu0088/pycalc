@@ -27,11 +27,21 @@ __PYCALC_KEYBOARD_CSS__
     <div class="session-bar">
       <span class="session-label" data-i18n="session.label"></span>
       <select id="session-select" data-i18n-title="session.selectTitle"></select>
-      <button id="session-new" class="icon-btn" data-i18n-title="session.new">＋</button>
-      <button id="session-rename" class="icon-btn" data-i18n-title="session.rename">✎</button>
-      <button id="session-redraw" class="icon-btn" data-i18n-title="session.redraw">↻</button>
-      <button id="session-sweep" class="icon-btn" data-i18n-title="session.clear">🧹</button>
-      <button id="session-delete" class="icon-btn danger" data-i18n-title="session.delete">×</button>
+      <button id="session-new" class="icon-btn" data-i18n-title="session.new">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+      </button>
+      <button id="session-rename" class="icon-btn" data-i18n-title="session.rename">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20Z"></path><path d="m13.5 6.5 3 3"></path></svg>
+      </button>
+      <button id="session-redraw" class="icon-btn" data-i18n-title="session.redraw">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"></path><path d="M20 4v7h-7"></path></svg>
+      </button>
+      <button id="session-sweep" class="icon-btn" data-i18n-title="session.clear">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 3 7 7"></path><path d="m13 4 7 7-8 8-7-7 8-8Z"></path><path d="m5 12-2 9 9-2"></path></svg>
+      </button>
+      <button id="session-delete" class="icon-btn danger" data-i18n-title="session.delete">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+      </button>
     </div>
 
     <div class="top-actions">
@@ -43,10 +53,18 @@ __PYCALC_KEYBOARD_CSS__
           <option value="ja">日本語</option>
         </select>
       </label>
-      <button id="session-bar-toggle" class="icon-btn mobile-only" data-i18n-title="session.hideBar">⌃</button>
-      <button id="display-settings" class="icon-btn" data-i18n-title="display.open">⚙</button>
-      <button id="theme-toggle" class="icon-btn" data-i18n-title="theme.toggleTitle">☀</button>
-      <button id="sidebar-toggle" class="icon-btn" data-i18n-title="sidebar.toggleTitle">☰</button>
+      <button id="session-bar-toggle" class="icon-btn mobile-only" data-i18n-title="session.hideBar">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6"></path></svg>
+      </button>
+      <button id="display-settings" class="icon-btn" data-i18n-title="display.open">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"></path></svg>
+      </button>
+      <button id="theme-toggle" class="icon-btn" data-i18n-title="theme.toggleTitle">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg>
+      </button>
+      <button id="sidebar-toggle" class="icon-btn" data-i18n-title="sidebar.toggleTitle">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>
+      </button>
       <span id="save-status" class="save-status"></span>
     </div>
   </header>
@@ -59,7 +77,9 @@ __PYCALC_KEYBOARD_CSS__
     <section class="display-panel" role="dialog" aria-modal="true" aria-labelledby="display-title">
       <header class="display-header">
         <h2 id="display-title" data-i18n="display.title"></h2>
-        <button id="display-close" class="icon-btn" data-i18n-title="display.close">×</button>
+        <button id="display-close" class="icon-btn" data-i18n-title="display.close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+        </button>
       </header>
       <div class="display-body">
         <fieldset class="display-group">
@@ -190,9 +210,13 @@ __PYCALC_KEYBOARD_CSS__
           <span id="library-note" class="library-note" data-i18n="libraries.hint"></span>
           <div class="history-actions">
             <button id="history-undo" class="icon-btn history-btn" type="button"
-                    data-i18n-title="history.undoTitle" disabled>↶</button>
+                    data-i18n-title="history.undoTitle" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"></path><path d="M4 9h9a7 7 0 0 1 7 7v1"></path></svg>
+            </button>
             <button id="history-redo" class="icon-btn history-btn" type="button"
-                    data-i18n-title="history.redoTitle" disabled>↷</button>
+                    data-i18n-title="history.redoTitle" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"></path><path d="M20 9h-9a7 7 0 0 0-7 7v1"></path></svg>
+            </button>
             <button id="editor-clear" class="icon-btn history-btn" type="button"
                     data-i18n-title="keyboard.key.clearInput">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16 7-7 5 5-5 5H7l-3-3Z"></path><path d="m9 9 5 5M4 21h16"></path></svg>
