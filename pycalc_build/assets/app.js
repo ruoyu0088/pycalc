@@ -21,7 +21,28 @@
     add.className = 'icon-btn side-add-btn';
     add.dataset.i18nTitle = 'variables.addTitle';
     add.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>';
-    title.appendChild(add);
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.id = 'sidebar-close';
+    close.className = 'icon-btn side-add-btn mobile-only';
+    close.dataset.i18nTitle = 'sidebar.closeTitle';
+    close.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>';
+
+    const actions = document.createElement('span');
+    actions.className = 'side-head-actions';
+    actions.appendChild(add);
+    actions.appendChild(close);
+    title.appendChild(actions);
+
+    close.addEventListener('click', () => {
+      if (window.innerWidth <= 880) {
+        state.mobileSidebarOpen = false;
+      } else {
+        state.ui.sidebarHidden = true;
+      }
+      applySidebar();
+    });
 
     const dialog = document.createElement('div');
     dialog.id = 'variable-dialog';
