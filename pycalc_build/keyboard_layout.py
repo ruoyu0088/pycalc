@@ -176,6 +176,7 @@ LAYOUT = {
                 "zip",
                 "map",
                 "filter",
+                "StringIO"
             ],
         },
         "libraries": {

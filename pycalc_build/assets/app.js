@@ -3,6 +3,161 @@
 
   const $ = (id) => document.getElementById(id);
 
+  // ---------------------------------------------------------------------
+  // Add-variable dialog
+  // ---------------------------------------------------------------------
+
+  function setupVariableDialog() {
+    const title = document.querySelector('h3[data-i18n="sidebar.variables"]');
+    if (!title) return;
+    const label = document.createElement('span');
+    label.dataset.i18n = title.dataset.i18n;
+    title.removeAttribute('data-i18n');
+    title.textContent = '';
+    title.appendChild(label);
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.id = 'variable-add';
+    add.className = 'icon-btn side-add-btn';
+    add.dataset.i18nTitle = 'variables.addTitle';
+    add.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>';
+    title.appendChild(add);
+
+    const dialog = document.createElement('div');
+    dialog.id = 'variable-dialog';
+    dialog.className = 'display-dialog hidden';
+    dialog.innerHTML = `
+      <div class="display-backdrop" id="variable-backdrop"></div>
+      <section class="display-panel variable-panel" role="dialog" aria-modal="true" aria-labelledby="variable-title">
+        <header class="display-header">
+          <h2 id="variable-title" data-i18n="variables.addTitle"></h2>
+          <button id="variable-close" class="icon-btn" type="button" data-i18n-title="display.close">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+          </button>
+        </header>
+        <div class="display-body">
+          <label class="display-row variable-field">
+            <span data-i18n="variables.name"></span>
+            <input id="variable-name" class="compact-input" type="text" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="display-row variable-field">
+            <span data-i18n="variables.type"></span>
+            <select id="variable-type" class="compact-select">
+              <option value="string" data-i18n="variables.typeString"></option>
+              <option value="array" data-i18n="variables.typeArray"></option>
+              <option value="dataframe" data-i18n="variables.typeDataframe"></option>
+            </select>
+          </label>
+          <label id="variable-ignore-spaces-row" class="display-check hidden">
+            <input id="variable-ignore-spaces" type="checkbox">
+            <span data-i18n="variables.ignoreSpaces"></span>
+          </label>
+          <label class="variable-text-label">
+            <span data-i18n="variables.text"></span>
+            <textarea id="variable-text" class="variable-text" spellcheck="false"></textarea>
+          </label>
+          <div id="variable-error" class="variable-error hidden"></div>
+          <div class="variable-actions">
+            <button id="variable-cancel" class="secondary" type="button" data-i18n="variables.cancel"></button>
+            <button id="variable-ok" class="run-btn" type="button" data-i18n="variables.ok"></button>
+          </div>
+        </div>
+      </section>
+    `;
+    document.getElementById('app').appendChild(dialog);
+
+    add.addEventListener('click', openVariableDialog);
+    dialog.querySelector('#variable-close').addEventListener('click', closeVariableDialog);
+    dialog.querySelector('#variable-cancel').addEventListener('click', closeVariableDialog);
+    dialog.querySelector('#variable-backdrop').addEventListener('click', closeVariableDialog);
+    dialog.querySelector('#variable-type').addEventListener('change', updateVariableTypeUi);
+    dialog.querySelector('#variable-ok').addEventListener('click', submitVariableDialog);
+    dialog.querySelector('#variable-text').addEventListener('keydown', (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        event.preventDefault();
+        submitVariableDialog();
+      }
+    });
+    document.addEventListener('keydown', (event) => {
+      const node = $('variable-dialog');
+      if (event.key === 'Escape' && node && !node.classList.contains('hidden')) {
+        closeVariableDialog();
+      }
+    });
+  }
+
+  function openVariableDialog() {
+    if (!state.ready || state.busy) {
+      toast('variables.notReady');
+      return;
+    }
+    const dialog = $('variable-dialog');
+    if (!dialog) return;
+    $('variable-name').value = '';
+    $('variable-text').value = '';
+    $('variable-type').value = 'string';
+    $('variable-ignore-spaces').checked = false;
+    $('variable-error').textContent = '';
+    $('variable-error').classList.add('hidden');
+    $('variable-ok').disabled = false;
+    updateVariableTypeUi();
+    I18n.applyStatic(dialog);
+    dialog.classList.remove('hidden');
+    $('variable-name').focus();
+  }
+
+  function closeVariableDialog() {
+    const dialog = $('variable-dialog');
+    if (dialog) dialog.classList.add('hidden');
+  }
+
+  function updateVariableTypeUi() {
+    const type = $('variable-type') ? $('variable-type').value : 'string';
+    const row = $('variable-ignore-spaces-row');
+    if (row) row.classList.toggle('hidden', type !== 'dataframe');
+  }
+
+  async function submitVariableDialog() {
+    const name = ($('variable-name').value || '').trim();
+    const type = $('variable-type').value;
+    const text = $('variable-text').value;
+    const ignoreSpaces = $('variable-ignore-spaces').checked;
+    const error = $('variable-error');
+    const ok = $('variable-ok');
+    const showError = (message) => {
+      error.textContent = message;
+      error.classList.remove('hidden');
+    };
+    if (!name) {
+      showError(I18n.t('variables.nameRequired'));
+      return;
+    }
+    if (!/^[A-Za-z_]\w*$/.test(name)) {
+      showError(I18n.t('variables.nameInvalid'));
+      return;
+    }
+    error.classList.add('hidden');
+    ok.disabled = true;
+    try {
+      const raw = await workerCall('createVariable', [name, type, text, ignoreSpaces ? '1' : '0']);
+      const result = JSON.parse(raw);
+      if (!result.ok) {
+        showError(result.error || I18n.t('error.unknown'));
+        return;
+      }
+      closeVariableDialog();
+      await refreshInspector();
+      queueSave({ snapshot: true });
+      toast('variables.created', { name });
+    } catch (err) {
+      showError(String((err && err.message) || err));
+    } finally {
+      ok.disabled = false;
+    }
+  }
+
+  setupVariableDialog();
+
   function el(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;

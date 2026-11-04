@@ -12,9 +12,11 @@ import importlib
 import inspect
 import io
 import json
+import keyword
 import math
 import os
 import reprlib
+import re
 import sys
 import traceback
 import types
@@ -75,6 +77,57 @@ _REPR.maxlevel = 2
 
 def _pycalc_user_globals():
     return __main__.__dict__
+
+
+def _pycalc_create_variable(name, kind, text, ignore_spaces="0"):
+    """Create a user variable from text pasted in the Variables dialog."""
+    name = str(name or "").strip()
+    kind = str(kind or "string")
+    text = "" if text is None else str(text)
+    if not name.isidentifier() or keyword.iskeyword(name):
+        return json.dumps(
+            {"ok": False, "error": "Variable name must be a valid Python identifier."},
+            ensure_ascii=False,
+        )
+    if name in _PYCALC_PROTECTED or name.startswith("_pycalc_") or name.startswith("__"):
+        return json.dumps(
+            {"ok": False, "error": "This variable name is reserved."},
+            ensure_ascii=False,
+        )
+    try:
+        if kind == "string":
+            value = text
+        elif kind == "array":
+            import numpy as np
+
+            rows = []
+            for line in text.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                tokens = [part for part in re.split(r"[,\s]+", line) if part]
+                if not tokens:
+                    continue
+                rows.append([float(token) for token in tokens])
+            if not rows:
+                raise ValueError("No numeric values found.")
+            value = np.array(rows[0] if len(rows) == 1 else rows)
+        elif kind == "dataframe":
+            import polars as pl
+
+            source = text.replace(" ", "") if str(ignore_spaces) in ("1", "true", "True") else text
+            if not source.strip():
+                raise ValueError("Text is empty.")
+            value = pl.read_csv(io.BytesIO(source.encode("utf-8")))
+        else:
+            raise ValueError(f"Unknown variable type: {kind}")
+    except Exception as exc:
+        return json.dumps(
+            {"ok": False, "error": f"{type(exc).__name__}: {exc}"},
+            ensure_ascii=False,
+        )
+    _pycalc_user_globals()[name] = value
+    return json.dumps({"ok": True, "name": name, "type": kind}, ensure_ascii=False)
 
 
 def _pycalc_is_module(value):
@@ -173,11 +226,13 @@ _PYCALC_MISSING = object()
 
 
 def _pycalc_apply_math(conflicts):
-    import math
+    import math, io
 
     _pycalc_bind("math", math, conflicts)
     for name in _PYCALC_MATH_NAMES:
         _pycalc_bind(name, getattr(math, name), conflicts)
+
+    _pycalc_bind('StringIO', io.StringIO, conflicts)
 
 
 def _pycalc_apply_module(module, alias, conflicts, errors):

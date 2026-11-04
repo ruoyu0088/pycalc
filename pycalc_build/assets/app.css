@@ -1,3 +1,97 @@
+.side-card h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.side-card h3 > span {
+  min-width: 0;
+}
+
+.side-add-btn {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 5px;
+}
+
+.side-add-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.compact-input {
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  outline: none;
+  font: inherit;
+}
+
+.compact-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.variable-panel {
+  width: min(620px, 100%);
+}
+
+.variable-field input,
+.variable-field select {
+  min-width: 190px;
+}
+
+.variable-text-label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.variable-text {
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  outline: none;
+}
+
+.variable-text:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.variable-error {
+  margin-top: 10px;
+  padding: 7px 9px;
+  border: 1px solid var(--red);
+  border-radius: 6px;
+  background: var(--red-soft);
+  color: var(--red);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.variable-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 :root {
   color-scheme: light;
   --bg: #f6f7f9;

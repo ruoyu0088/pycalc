@@ -16,6 +16,21 @@ LANGUAGE_NAMES = {"zh": "中文", "en": "English", "ja": "日本語"}
 EN: dict[str, str] = {
     # Window / dashboard
     "app.subtitle": "Offline Python calculator",
+    # Variables dialog
+    "variables.addTitle": "Add variable",
+    "variables.name": "Name",
+    "variables.type": "Type",
+    "variables.typeString": "String",
+    "variables.typeArray": "Array (NumPy)",
+    "variables.typeDataframe": "DataFrame",
+    "variables.ignoreSpaces": "Remove all spaces before reading",
+    "variables.text": "Text",
+    "variables.cancel": "Cancel",
+    "variables.ok": "Create",
+    "variables.nameRequired": "Variable name cannot be empty.",
+    "variables.nameInvalid": "Variable name must be a valid Python identifier.",
+    "variables.notReady": "The Python runtime is not ready yet.",
+    "variables.created": "Created variable {name}.",
     # Sessions
     "session.label": "Session",
     "session.new": "New",

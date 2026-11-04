@@ -108,6 +108,7 @@ for _pycalc_name in (
     '_pycalc_set_libraries', '_pycalc_is_complete',
     '_pycalc_list_vars', '_pycalc_list_funcs', '_pycalc_set_plot_theme',
     '_pycalc_completion_items', '_pycalc_attribute_items',
+    '_pycalc_create_variable',
 ):
     setattr(_pycalc_main, _pycalc_name, getattr(_pycalc_mod, _pycalc_name))
 del _pycalc_types, _pycalc_main, _pycalc_mod, _pycalc_name, _pycalc_glue_source
@@ -128,6 +129,7 @@ del _pycalc_types, _pycalc_main, _pycalc_mod, _pycalc_name, _pycalc_glue_source
     setPlotTheme: pyodide.globals.get('_pycalc_set_plot_theme'),
     listCompletions: pyodide.globals.get('_pycalc_completion_items'),
     attributeItems: pyodide.globals.get('_pycalc_attribute_items'),
+    createVariable: pyodide.globals.get('_pycalc_create_variable'),
   };
 }
 
