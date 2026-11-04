@@ -531,6 +531,9 @@ body.resizing-sidebar {
 .side-table th:nth-child(2) { width: 36%; }
 .side-table th:nth-child(3) { width: 36%; }
 
+.side-table.side-table-funcs th:nth-child(1) { width: 33.3333%; }
+.side-table.side-table-funcs th:nth-child(2) { width: 66.6667%; }
+
 .side-table td {
   padding: 5px 6px;
   border-bottom: 1px solid var(--border-soft);
@@ -548,6 +551,24 @@ body.resizing-sidebar {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.side-table td.side-value-truncated {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.side-value-detail-row td.side-value-detail {
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 6px 8px;
+  text-align: left;
 }
 
 .side-empty {

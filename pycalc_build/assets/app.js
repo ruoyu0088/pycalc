@@ -1676,6 +1676,8 @@
     return null;
   }
 
+  const VARIABLE_VALUE_INLINE_LIMIT = 48;
+
   async function refreshInspector() {
     const varsBody = $('vars-body');
     const funcsBody = $('funcs-body');
@@ -1696,15 +1698,29 @@
       const vars = JSON.parse(await py.listVars());
       state.variables = Array.isArray(vars) ? vars : [];
       for (const row of vars) {
+        const valueText = row.value == null ? '' : String(row.value);
+        const isLongValue = valueText.length > VARIABLE_VALUE_INLINE_LIMIT
+          || valueText.includes('\n');
         const tr = document.createElement('tr');
         tr.appendChild(el('td', '', row.name));
         const typeCell = el('td', '', row.type);
         typeCell.title = row.type;
         tr.appendChild(typeCell);
-        const valueCell = el('td', '', row.value);
-        valueCell.title = row.value;
+        const valueCell = el('td', '', isLongValue? '' : valueText);
+        valueCell.title = valueText;
+        if (isLongValue) valueCell.classList.add('side-value-truncated');
         tr.appendChild(valueCell);
         varsBody.appendChild(tr);
+        if (isLongValue) {
+          const detailTr = document.createElement('tr');
+          detailTr.className = 'side-value-detail-row';
+          const detailCell = document.createElement('td');
+          detailCell.colSpan = 3;
+          detailCell.className = 'side-value-detail';
+          detailCell.textContent = valueText;
+          detailTr.appendChild(detailCell);
+          varsBody.appendChild(detailTr);
+        }
       }
       varsCard.classList.toggle('empty', vars.length === 0);
     } catch (err) {
