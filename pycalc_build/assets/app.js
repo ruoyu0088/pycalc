@@ -177,7 +177,10 @@
       const raw = await workerCall('createVariable', [name, type, text, ignoreSpaces ? '1' : '0']);
       const result = JSON.parse(raw);
       if (!result.ok) {
-        showError(result.error || I18n.t('error.unknown'));
+        const message = result.errorKey
+          ? I18n.t(result.errorKey, result.errorParams || {})
+          : (result.error || I18n.t('error.unknown'));
+        showError(message);
         return;
       }
       closeVariableDialog();
@@ -186,7 +189,9 @@
       if (isCode) toast('variables.codeExecuted');
       else toast('variables.created', { name });
     } catch (err) {
-      showError(String((err && err.message) || err));
+      showError(I18n.t('variables.createFailed', {
+        error: String((err && err.message) || err),
+      }));
     } finally {
       ok.disabled = false;
     }

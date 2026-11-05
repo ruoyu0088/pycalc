@@ -84,33 +84,28 @@ def _pycalc_create_variable(name, kind, text, ignore_spaces="0"):
     name = str(name or "").strip()
     kind = str(kind or "string")
     text = "" if text is None else str(text)
+
+    def fail(key, **params):
+        return json.dumps(
+            {"ok": False, "errorKey": key, "errorParams": params},
+            ensure_ascii=False,
+        )
+
     if kind == "code":
         if not text.strip():
-            return json.dumps(
-                {"ok": False, "error": "Code cannot be empty."},
-                ensure_ascii=False,
-            )
+            return fail("variables.codeRequired")
         try:
             exec(compile(text, "<variables-code>", "exec"), _pycalc_user_globals())
         except Exception as exc:
-            return json.dumps(
-                {"ok": False, "error": f"{type(exc).__name__}: {exc}"},
-                ensure_ascii=False,
-            )
+            return fail("variables.codeFailed", error=f"{type(exc).__name__}: {exc}")
         return json.dumps(
             {"ok": True, "name": name, "type": "code"},
             ensure_ascii=False,
         )
     if not name.isidentifier() or keyword.iskeyword(name):
-        return json.dumps(
-            {"ok": False, "error": "Variable name must be a valid Python identifier."},
-            ensure_ascii=False,
-        )
+        return fail("variables.nameInvalid")
     if name in _PYCALC_PROTECTED or name.startswith("_pycalc_") or name.startswith("__"):
-        return json.dumps(
-            {"ok": False, "error": "This variable name is reserved."},
-            ensure_ascii=False,
-        )
+        return fail("variables.nameReserved")
     try:
         if kind == "string":
             value = text
@@ -127,22 +122,19 @@ def _pycalc_create_variable(name, kind, text, ignore_spaces="0"):
                     continue
                 rows.append([float(token) for token in tokens])
             if not rows:
-                raise ValueError("No numeric values found.")
+                return fail("variables.noNumericValues")
             value = np.array(rows[0] if len(rows) == 1 else rows)
         elif kind == "dataframe":
             import polars as pl
 
             source = text.replace(" ", "") if str(ignore_spaces) in ("1", "true", "True") else text
             if not source.strip():
-                raise ValueError("Text is empty.")
+                return fail("variables.textEmpty")
             value = pl.read_csv(io.BytesIO(source.encode("utf-8")))
         else:
-            raise ValueError(f"Unknown variable type: {kind}")
+            return fail("variables.unknownType", type=kind)
     except Exception as exc:
-        return json.dumps(
-            {"ok": False, "error": f"{type(exc).__name__}: {exc}"},
-            ensure_ascii=False,
-        )
+        return fail("variables.createFailed", error=f"{type(exc).__name__}: {exc}")
     _pycalc_user_globals()[name] = value
     return json.dumps({"ok": True, "name": name, "type": kind}, ensure_ascii=False)
 
