@@ -84,6 +84,23 @@ def _pycalc_create_variable(name, kind, text, ignore_spaces="0"):
     name = str(name or "").strip()
     kind = str(kind or "string")
     text = "" if text is None else str(text)
+    if kind == "code":
+        if not text.strip():
+            return json.dumps(
+                {"ok": False, "error": "Code cannot be empty."},
+                ensure_ascii=False,
+            )
+        try:
+            exec(compile(text, "<variables-code>", "exec"), _pycalc_user_globals())
+        except Exception as exc:
+            return json.dumps(
+                {"ok": False, "error": f"{type(exc).__name__}: {exc}"},
+                ensure_ascii=False,
+            )
+        return json.dumps(
+            {"ok": True, "name": name, "type": "code"},
+            ensure_ascii=False,
+        )
     if not name.isidentifier() or keyword.iskeyword(name):
         return json.dumps(
             {"ok": False, "error": "Variable name must be a valid Python identifier."},

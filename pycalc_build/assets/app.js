@@ -57,7 +57,7 @@
           </button>
         </header>
         <div class="display-body">
-          <label class="display-row variable-field">
+          <label id="variable-name-row" class="display-row variable-field">
             <span data-i18n="variables.name"></span>
             <input id="variable-name" class="compact-input" type="text" autocomplete="off" spellcheck="false">
           </label>
@@ -67,6 +67,7 @@
               <option value="string" data-i18n="variables.typeString"></option>
               <option value="array" data-i18n="variables.typeArray"></option>
               <option value="dataframe" data-i18n="variables.typeDataframe"></option>
+              <option value="code" data-i18n="variables.typeCode"></option>
             </select>
           </label>
           <label id="variable-ignore-spaces-row" class="display-check hidden">
@@ -74,7 +75,7 @@
             <span data-i18n="variables.ignoreSpaces"></span>
           </label>
           <label class="variable-text-label">
-            <span data-i18n="variables.text"></span>
+            <span id="variable-text-label-text" data-i18n="variables.text"></span>
             <textarea id="variable-text" class="variable-text" spellcheck="false"></textarea>
           </label>
           <div id="variable-error" class="variable-error hidden"></div>
@@ -121,8 +122,8 @@
     $('variable-error').textContent = '';
     $('variable-error').classList.add('hidden');
     $('variable-ok').disabled = false;
-    updateVariableTypeUi();
     I18n.applyStatic(dialog);
+    updateVariableTypeUi();
     dialog.classList.remove('hidden');
     $('variable-name').focus();
   }
@@ -134,13 +135,19 @@
 
   function updateVariableTypeUi() {
     const type = $('variable-type') ? $('variable-type').value : 'string';
+    const isCode = type === 'code';
     const row = $('variable-ignore-spaces-row');
     if (row) row.classList.toggle('hidden', type !== 'dataframe');
+    const nameRow = $('variable-name-row');
+    if (nameRow) nameRow.classList.toggle('hidden', isCode);
+    const textLabel = $('variable-text-label-text');
+    if (textLabel) textLabel.textContent = I18n.t(isCode ? 'variables.codeText' : 'variables.text');
   }
 
   async function submitVariableDialog() {
     const name = ($('variable-name').value || '').trim();
     const type = $('variable-type').value;
+    const isCode = type === 'code';
     const text = $('variable-text').value;
     const ignoreSpaces = $('variable-ignore-spaces').checked;
     const error = $('variable-error');
@@ -149,13 +156,20 @@
       error.textContent = message;
       error.classList.remove('hidden');
     };
-    if (!name) {
-      showError(I18n.t('variables.nameRequired'));
-      return;
-    }
-    if (!/^[A-Za-z_]\w*$/.test(name)) {
-      showError(I18n.t('variables.nameInvalid'));
-      return;
+    if (isCode) {
+      if (!text.trim()) {
+        showError(I18n.t('variables.codeRequired'));
+        return;
+      }
+    } else {
+      if (!name) {
+        showError(I18n.t('variables.nameRequired'));
+        return;
+      }
+      if (!/^[A-Za-z_]\w*$/.test(name)) {
+        showError(I18n.t('variables.nameInvalid'));
+        return;
+      }
     }
     error.classList.add('hidden');
     ok.disabled = true;
@@ -169,7 +183,8 @@
       closeVariableDialog();
       await refreshInspector();
       queueSave({ snapshot: true });
-      toast('variables.created', { name });
+      if (isCode) toast('variables.codeExecuted');
+      else toast('variables.created', { name });
     } catch (err) {
       showError(String((err && err.message) || err));
     } finally {

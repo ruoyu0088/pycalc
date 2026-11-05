@@ -23,14 +23,18 @@ EN: dict[str, str] = {
     "variables.typeString": "String",
     "variables.typeArray": "Array (NumPy)",
     "variables.typeDataframe": "DataFrame",
+    "variables.typeCode": "Code",
     "variables.ignoreSpaces": "Remove all spaces before reading",
     "variables.text": "Text",
+    "variables.codeText": "Code",
     "variables.cancel": "Cancel",
     "variables.ok": "Create",
     "variables.nameRequired": "Variable name cannot be empty.",
     "variables.nameInvalid": "Variable name must be a valid Python identifier.",
     "variables.notReady": "The Python runtime is not ready yet.",
     "variables.created": "Created variable {name}.",
+    "variables.codeRequired": "Code cannot be empty.",
+    "variables.codeExecuted": "Code executed.",
     # Sessions
     "session.label": "Session",
     "session.new": "New",
@@ -268,6 +272,10 @@ EN: dict[str, str] = {
 
 ZH: dict[str, str] = {
     "app.subtitle": "离线 Python 计算器",
+    "variables.typeCode": "代码",
+    "variables.codeText": "代码",
+    "variables.codeRequired": "代码不能为空。",
+    "variables.codeExecuted": "代码已运行。",
     "session.label": "会话",
     "session.new": "新建",
     "session.rename": "重命名",
@@ -495,6 +503,10 @@ ZH: dict[str, str] = {
 
 JA: dict[str, str] = {
     "app.subtitle": "オフライン Python 電卓",
+    "variables.typeCode": "コード",
+    "variables.codeText": "コード",
+    "variables.codeRequired": "コードを入力してください。",
+    "variables.codeExecuted": "コードを実行しました。",
     "session.label": "セッション",
     "session.new": "新規",
     "session.rename": "名前を変更",
