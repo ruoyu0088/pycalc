@@ -68,6 +68,7 @@
               <option value="array" data-i18n="variables.typeArray"></option>
               <option value="dataframe" data-i18n="variables.typeDataframe"></option>
               <option value="code" data-i18n="variables.typeCode"></option>
+              <option value="snippet" data-i18n="variables.typeSnippet"></option>
             </select>
           </label>
           <label id="variable-ignore-spaces-row" class="display-check hidden">
@@ -136,18 +137,20 @@
   function updateVariableTypeUi() {
     const type = $('variable-type') ? $('variable-type').value : 'string';
     const isCode = type === 'code';
+    const isSnippet = type === 'snippet';
     const row = $('variable-ignore-spaces-row');
     if (row) row.classList.toggle('hidden', type !== 'dataframe');
     const nameRow = $('variable-name-row');
     if (nameRow) nameRow.classList.toggle('hidden', isCode);
     const textLabel = $('variable-text-label-text');
-    if (textLabel) textLabel.textContent = I18n.t(isCode ? 'variables.codeText' : 'variables.text');
+    if (textLabel) textLabel.textContent = I18n.t(isCode || isSnippet ? 'variables.codeText' : 'variables.text');
   }
 
   async function submitVariableDialog() {
     const name = ($('variable-name').value || '').trim();
     const type = $('variable-type').value;
     const isCode = type === 'code';
+    const isSnippet = type === 'snippet';
     const text = $('variable-text').value;
     const ignoreSpaces = $('variable-ignore-spaces').checked;
     const error = $('variable-error');
@@ -159,6 +162,11 @@
     if (isCode) {
       if (!text.trim()) {
         showError(I18n.t('variables.codeRequired'));
+        return;
+      }
+    } else if (isSnippet) {
+      if (!name) {
+        showError(I18n.t('variables.nameRequired'));
         return;
       }
     } else {
@@ -174,6 +182,19 @@
     error.classList.add('hidden');
     ok.disabled = true;
     try {
+      if (isSnippet) {
+        if (state.snippets.some((item) => item.name === name)) {
+          showError(I18n.t('variables.snippetDuplicate'));
+          return;
+        }
+        state.snippets.push({ name, code: text });
+        sortSnippets();
+        await saveSnippetsMeta();
+        renderSnippets();
+        closeVariableDialog();
+        toast('variables.snippetCreated', { name });
+        return;
+      }
       const raw = await workerCall('createVariable', [name, type, text, ignoreSpaces ? '1' : '0']);
       const result = JSON.parse(raw);
       if (!result.ok) {
@@ -424,6 +445,7 @@
     completions: [],
     variables: [],
     functions: [],
+    snippets: [],
     attributeCache: new Map(),
     historyNav: { index: null, draft: '' },
     redoStack: [],
@@ -976,6 +998,63 @@
     } catch (err) {
       console.warn('could not save UI settings', err);
     }
+  }
+
+  function sortSnippets() {
+    state.snippets.sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' }));
+  }
+
+  async function loadSnippetsMeta() {
+    if (!state.storage) return;
+    try {
+      const meta = await state.storage.getMeta('snippets');
+      const items = meta && Array.isArray(meta.items) ? meta.items : [];
+      state.snippets = items
+        .filter((item) => item && typeof item.name === 'string' && typeof item.code === 'string')
+        .map((item) => ({ name: item.name, code: item.code }));
+    } catch (err) {
+      console.warn('could not read snippets', err);
+      state.snippets = [];
+    }
+    sortSnippets();
+    renderSnippets();
+  }
+
+  async function saveSnippetsMeta() {
+    if (!state.storage) return;
+    try {
+      await state.storage.putMeta({ key: 'snippets', items: state.snippets });
+    } catch (err) {
+      console.warn('could not save snippets', err);
+    }
+  }
+
+  function renderSnippets() {
+    const host = $('snippets-list');
+    if (!host) return;
+    const card = host.closest('.side-card');
+    host.innerHTML = '';
+    for (const snippet of state.snippets) {
+      const item = el('div', 'snippet-item');
+      const name = document.createElement('button');
+      name.type = 'button';
+      name.className = 'snippet-name';
+      name.textContent = snippet.name;
+      name.title = I18n.t('snippets.insertTitle');
+      name.addEventListener('click', () => insertSnippet(snippet));
+      item.appendChild(name);
+      item.appendChild(el('pre', 'snippet-code', snippet.code || ''));
+      host.appendChild(item);
+    }
+    if (card) card.classList.toggle('empty', state.snippets.length === 0);
+  }
+
+  function insertSnippet(snippet) {
+    if (!snippet || typeof snippet.code !== 'string') return;
+    setEditorText(snippet.code, true);
+    state.historyNav.index = null;
+    state.historyNav.draft = snippet.code;
+    if (editor && editor.focus) editor.focus();
   }
 
   // ---------------------------------------------------------------------
@@ -2646,6 +2725,7 @@
     updateBusyUi();
     applySessionBar();
     renderLibraryBar();
+    renderSnippets();
     renderSympyControl();
     updateHistoryButtons();
     applyPromptVisibility();
@@ -2941,6 +3021,7 @@
     state.ui = await loadUiMeta();
     perf.mark('boot:loadUiMeta');
     I18n.setLanguage(state.ui.language);
+    await loadSnippetsMeta();
     document.documentElement.dataset.theme = state.ui.theme;
     $('language-select').value = state.ui.language;
     const runKey = $('run-key');
