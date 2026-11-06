@@ -817,6 +817,8 @@ pre.error {
 .sympy-output-toggle.hidden { display: none !important; }
 
 .editor-shell {
+  display: flex;
+  align-items: stretch;
   max-width: 1180px;
   margin: 0 auto;
   border: 1px solid var(--border);
@@ -832,7 +834,9 @@ pre.error {
 
 #editor {
   display: block;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
   min-height: 92px;
   max-height: 40vh;
   resize: vertical;
@@ -847,7 +851,12 @@ pre.error {
   tab-size: 4;
 }
 
-.cm-host { max-height: 40vh; overflow: hidden; }
+.cm-host { flex: 1 1 auto; min-width: 0; max-height: 40vh; overflow: hidden; }
+.editor-shell > .editor-run-btn {
+  flex: 0 0 auto;
+  align-self: flex-end;
+  margin: 10px 12px;
+}
 .cm-host .cm-editor { min-height: 100px; max-height: 40vh; font-size: 13px; }
 .cm-host .cm-scroller { overflow: auto; }
 .cm-editor.cm-focused { outline: none; }
@@ -1167,6 +1176,10 @@ pre.error {
 }
 
 body.mobile-keyboard-active .composer-actions {
+  display: none !important;
+}
+
+body.mobile-keyboard-active .editor-shell > .editor-run-btn {
   display: none !important;
 }
 

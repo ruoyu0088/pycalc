@@ -2441,7 +2441,8 @@
     $('session-sweep').disabled = state.busy || !state.ready;
     $('session-delete').disabled = state.busy || !state.ready;
     $('language-select').disabled = state.busy;
-    $('run-key').disabled = state.busy;
+    const runKey = $('run-key');
+    if (runKey) runKey.disabled = state.busy;
     $('theme-toggle').disabled = state.busy;
     $('display-settings').disabled = state.busy;
     for (const input of $('library-list').querySelectorAll('input')) {
@@ -2458,10 +2459,14 @@
   // ---------------------------------------------------------------------
 
   function renderRunHint() {
-    $('run-hint').textContent = I18n.t(
-      state.ui.runKey === 'enter' ? 'run.hintEnter' : 'run.hintCtrl'
-    );
-    $('run-key').value = state.ui.runKey;
+    const hint = $('run-hint');
+    if (hint) {
+      hint.textContent = I18n.t(
+        state.ui.runKey === 'enter' ? 'run.hintEnter' : 'run.hintCtrl'
+      );
+    }
+    const select = $('run-key');
+    if (select) select.value = state.ui.runKey;
     window.__pycalcRunKeyMode = state.ui.runKey;
   }
 
@@ -2634,7 +2639,8 @@
     $('session-title').title = I18n.t('session.switchTitle');
     $('session-title').setAttribute('aria-label', I18n.t('session.switchTitle'));
     $('sidebar-toggle').title = I18n.t('sidebar.toggleTitle');
-    $('run-key').value = state.ui.runKey;
+    const runKey = $('run-key');
+    if (runKey) runKey.value = state.ui.runKey;
     renderRunHint();
     renderStatus();
     updateBusyUi();
@@ -2732,7 +2738,8 @@
     });
     $('overlay-retry').addEventListener('click', () => location.reload());
     $('language-select').addEventListener('change', (event) => setLanguage(event.target.value));
-    $('run-key').addEventListener('change', (event) => applyRunKey(event.target.value));
+    const runKey = $('run-key');
+    if (runKey) runKey.addEventListener('change', (event) => applyRunKey(event.target.value));
     $('display-settings').addEventListener('click', openDisplaySettings);
     $('display-close').addEventListener('click', closeDisplaySettings);
     $('display-backdrop').addEventListener('click', closeDisplaySettings);
@@ -2936,7 +2943,8 @@
     I18n.setLanguage(state.ui.language);
     document.documentElement.dataset.theme = state.ui.theme;
     $('language-select').value = state.ui.language;
-    $('run-key').value = state.ui.runKey;
+    const runKey = $('run-key');
+    if (runKey) runKey.value = state.ui.runKey;
     $('theme-toggle').innerHTML = state.ui.theme === 'dark'
       ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg>'
       : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8Z"></path></svg>';
