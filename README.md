@@ -136,7 +136,7 @@ df = pd.DataFrame({"x": [1, 2, 3], "y": [1, 4, 9]})
 px.line(df, x="x", y="y", title="Plotly")
 ```
 
-最后一行返回 Plotly `Figure` 时，会用 wheel 内自带的 `plotly.min.js` 渲染成交互图，替代该表达式的文本 repr；图会随会话保存，刷新后恢复。如果先赋值给 `fig`，把 `fig` 放在最后一行即可；不要用 `fig.show()`，它不返回值，PyCalc 抓不到图。构建体积约 82 MB。只支持纯 Python wheel；带原生扩展的包仍需 Pyodide 官方构建。
+最后一行返回 Plotly `Figure` 时，会用 wheel 内自带的 `plotly.min.js` 渲染成交互图，替代该表达式的文本 repr；图会随会话保存，刷新后恢复。深/浅主题切换时，所有已渲染的 Plotly 图表会同步更新背景、网格、坐标轴、标题和图例配色。如果先赋值给 `fig`，把 `fig` 放在最后一行即可；不要用 `fig.show()`，它不返回值，PyCalc 抓不到图。构建体积约 82 MB。只支持纯 Python wheel；带原生扩展的包仍需 Pyodide 官方构建。
 
 ---
 

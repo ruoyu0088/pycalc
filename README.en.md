@@ -136,7 +136,7 @@ df = pd.DataFrame({"x": [1, 2, 3], "y": [1, 4, 9]})
 px.line(df, x="x", y="y", title="Plotly")
 ```
 
-When the last expression returns a Plotly `Figure`, the wheel's bundled `plotly.min.js` renders it as an interactive chart instead of the text repr. Charts are saved with the session and restored after a refresh. If you assign it to `fig`, put `fig` on the last line; do not call `fig.show()`, because it returns nothing and PyCalc cannot capture the figure. The build is about 82 MB. Only pure-Python wheels are supported; packages with native extensions still need an official Pyodide build.
+When the last expression returns a Plotly `Figure`, the wheel's bundled `plotly.min.js` renders it as an interactive chart instead of the text repr. Charts are saved with the session and restored after a refresh. Switching the dark/light theme updates the background, grid, axes, title and legend colors of every rendered Plotly chart. If you assign it to `fig`, put `fig` on the last line; do not call `fig.show()`, because it returns nothing and PyCalc cannot capture the figure. The build is about 82 MB. Only pure-Python wheels are supported; packages with native extensions still need an official Pyodide build.
 
 ---
 

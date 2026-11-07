@@ -2349,6 +2349,42 @@
     return wrap;
   }
 
+  function plotlyThemeName() {
+    return document.documentElement.dataset.theme === 'light'
+      ? 'plotly_white'
+      : 'plotly_dark';
+  }
+
+  function plotlyFontColor() {
+    return getComputedStyle(document.body).color;
+  }
+
+  function plotlyThemePatch() {
+    const color = plotlyFontColor();
+    return {
+      template: plotlyThemeName(),
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      plot_bgcolor: 'rgba(0,0,0,0)',
+      'font.color': color,
+      'title.font.color': color,
+    };
+  }
+
+  function applyPlotlyTheme() {
+    if (typeof Plotly === 'undefined') return;
+    const patch = plotlyThemePatch();
+    for (const node of document.querySelectorAll('.plotly-figure')) {
+      // Skip a chart that is still waiting for its first Plotly.newPlot().
+      if (!node._fullLayout) continue;
+      try {
+        const pending = Plotly.relayout(node, patch);
+        if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+      } catch (err) {
+        console.warn('plotly theme failed', err);
+      }
+    }
+  }
+
   function plotlyFigure(specJson) {
     if (!specJson || typeof Plotly === 'undefined') return null;
     let spec;
@@ -2377,14 +2413,20 @@
     if (compact && layout.title && layout.title.text) {
       layout.title = Object.assign({}, layout.title, { x: 0.5, xanchor: 'center' });
     }
-    if (!layout.template) {
-      layout.template = document.documentElement.dataset.theme === 'light'
-        ? 'plotly_white'
-        : 'plotly_dark';
+    // Let Plotly reclaim the space needed by long tick labels and axis titles
+    // instead of clipping them at the compact margins above.
+    if (!layout.xaxis) layout.xaxis = {};
+    if (!layout.yaxis) layout.yaxis = {};
+    for (const axis of Object.keys(layout)) {
+      if (/^[xy]axis\d*$/.test(axis)) {
+        layout[axis] = Object.assign({}, layout[axis], { automargin: true });
+      }
     }
+    layout.template = plotlyThemeName();
     layout.font = Object.assign(
-      { color: getComputedStyle(document.body).color },
-      layout.font || {}
+      {},
+      layout.font || {},
+      { color: plotlyFontColor() }
     );
     requestAnimationFrame(() => {
       try {
@@ -2789,6 +2831,8 @@
       : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8Z"></path></svg>';
     $('theme-toggle').title = I18n.t('theme.toggleTitle');
     if (editor && typeof editor.setTheme === 'function') editor.setTheme(state.ui.theme);
+    applyPlotlyTheme();
+    requestAnimationFrame(applyPlotlyTheme);
     if (py) {
       Promise.resolve(py.setPlotTheme(state.ui.theme)).catch((err) => {
         console.warn('plot theme failed', err);
