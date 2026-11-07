@@ -612,9 +612,17 @@ body.resizing-sidebar {
   min-width: 0;
 }
 
+.snippet-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
 .snippet-name {
+  flex: 1 1 auto;
+  min-width: 0;
   display: block;
-  width: 100%;
   padding: 0;
   border: 0;
   background: transparent;
@@ -631,6 +639,42 @@ body.resizing-sidebar {
 
 .snippet-name:hover { text-decoration: underline; }
 .snippet-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.snippet-edit-btn {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.snippet-edit-btn:hover {
+  background: var(--panel-2);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.snippet-edit-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.snippet-edit-btn svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
 .snippet-code {
   margin: 3px 0 0;

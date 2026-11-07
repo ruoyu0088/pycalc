@@ -1036,13 +1036,26 @@
     host.innerHTML = '';
     for (const snippet of state.snippets) {
       const item = el('div', 'snippet-item');
+      const header = el('div', 'snippet-header');
       const name = document.createElement('button');
       name.type = 'button';
       name.className = 'snippet-name';
       name.textContent = snippet.name;
       name.title = I18n.t('snippets.insertTitle');
       name.addEventListener('click', () => insertSnippet(snippet));
-      item.appendChild(name);
+      header.appendChild(name);
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'snippet-edit-btn';
+      edit.title = I18n.t('snippets.editTitle');
+      edit.setAttribute('aria-label', I18n.t('snippets.editTitle'));
+      edit.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20Z"></path><path d="m13.5 6.5 3 3"></path></svg>';
+      edit.addEventListener('click', (event) => {
+        event.stopPropagation();
+        openSnippetEditDialog(snippet);
+      });
+      header.appendChild(edit);
+      item.appendChild(header);
       item.appendChild(el('pre', 'snippet-code', snippet.code || ''));
       host.appendChild(item);
     }
@@ -1077,6 +1090,125 @@
     if (editor && editor.focus) editor.focus();
     closeMobileSidebarAfterInsert();
   }
+
+  let snippetEditTarget = null;
+
+  function setupSnippetEditDialog() {
+    const dialog = document.createElement('div');
+    dialog.id = 'snippet-edit-dialog';
+    dialog.className = 'display-dialog hidden';
+    dialog.innerHTML = `
+      <div class="display-backdrop" id="snippet-edit-backdrop"></div>
+      <section class="display-panel variable-panel" role="dialog" aria-modal="true" aria-labelledby="snippet-edit-title">
+        <header class="display-header">
+          <h2 id="snippet-edit-title" data-i18n="snippets.editTitle"></h2>
+          <button id="snippet-edit-close" class="icon-btn" type="button" data-i18n-title="display.close">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+          </button>
+        </header>
+        <div class="display-body">
+          <label class="display-row variable-field">
+            <span data-i18n="variables.name"></span>
+            <input id="snippet-edit-name" class="compact-input" type="text" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="variable-text-label">
+            <span data-i18n="variables.codeText"></span>
+            <textarea id="snippet-edit-code" class="variable-text" spellcheck="false"></textarea>
+          </label>
+          <div id="snippet-edit-error" class="variable-error hidden"></div>
+          <div class="variable-actions">
+            <button id="snippet-edit-delete" class="secondary" type="button" data-i18n="snippets.delete"></button>
+            <button id="snippet-edit-cancel" class="secondary" type="button" data-i18n="variables.cancel"></button>
+            <button id="snippet-edit-save" class="run-btn" type="button" data-i18n="snippets.save"></button>
+          </div>
+        </div>
+      </section>
+    `;
+    document.getElementById('app').appendChild(dialog);
+
+    dialog.querySelector('#snippet-edit-close').addEventListener('click', closeSnippetEditDialog);
+    dialog.querySelector('#snippet-edit-cancel').addEventListener('click', closeSnippetEditDialog);
+    dialog.querySelector('#snippet-edit-backdrop').addEventListener('click', closeSnippetEditDialog);
+    dialog.querySelector('#snippet-edit-save').addEventListener('click', saveSnippetEdit);
+    dialog.querySelector('#snippet-edit-delete').addEventListener('click', deleteSnippetFromDialog);
+    dialog.querySelector('#snippet-edit-code').addEventListener('keydown', (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        event.preventDefault();
+        saveSnippetEdit();
+      }
+    });
+    document.addEventListener('keydown', (event) => {
+      const node = $('snippet-edit-dialog');
+      if (event.key === 'Escape' && node && !node.classList.contains('hidden')) {
+        closeSnippetEditDialog();
+      }
+    });
+  }
+
+  function openSnippetEditDialog(snippet) {
+    if (!snippet) return;
+    snippetEditTarget = snippet;
+    const dialog = $('snippet-edit-dialog');
+    if (!dialog) return;
+    $('snippet-edit-name').value = snippet.name;
+    $('snippet-edit-code').value = snippet.code || '';
+    $('snippet-edit-error').textContent = '';
+    $('snippet-edit-error').classList.add('hidden');
+    $('snippet-edit-save').disabled = false;
+    $('snippet-edit-delete').disabled = false;
+    I18n.applyStatic(dialog);
+    dialog.classList.remove('hidden');
+    $('snippet-edit-name').focus();
+  }
+
+  function closeSnippetEditDialog() {
+    const dialog = $('snippet-edit-dialog');
+    if (dialog) dialog.classList.add('hidden');
+    snippetEditTarget = null;
+  }
+
+  async function saveSnippetEdit() {
+    if (!snippetEditTarget) return;
+    const name = ($('snippet-edit-name').value || '').trim();
+    const code = $('snippet-edit-code').value;
+    const error = $('snippet-edit-error');
+    const showError = (message) => {
+      error.textContent = message;
+      error.classList.remove('hidden');
+    };
+    if (!name) {
+      showError(I18n.t('variables.nameRequired'));
+      return;
+    }
+    if (state.snippets.some((item) => item !== snippetEditTarget && item.name === name)) {
+      showError(I18n.t('variables.snippetDuplicate'));
+      return;
+    }
+    error.classList.add('hidden');
+    const target = snippetEditTarget;
+    target.name = name;
+    target.code = code;
+    sortSnippets();
+    await saveSnippetsMeta();
+    renderSnippets();
+    closeSnippetEditDialog();
+    toast('snippets.updated', { name });
+  }
+
+  async function deleteSnippetFromDialog() {
+    if (!snippetEditTarget) return;
+    const target = snippetEditTarget;
+    if (!window.confirm(I18n.t('snippets.deleteConfirm', { name: target.name }))) {
+      return;
+    }
+    state.snippets = state.snippets.filter((item) => item !== target);
+    await saveSnippetsMeta();
+    renderSnippets();
+    closeSnippetEditDialog();
+    toast('snippets.deleted', { name: target.name });
+  }
+
+  setupSnippetEditDialog();
 
   // ---------------------------------------------------------------------
   // Sessions
