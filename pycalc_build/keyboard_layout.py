@@ -449,7 +449,7 @@ LAYOUT = {
             {"label": "cum_sum",      "insert": ".cum_sum("},
         ],
         "plotly.express": [
-            {"label": "ply",       "insert": "ply"},
+            {"label": "px",       "insert": "px"},
             {"label": "line",      "insert": "?line("},
             {"label": "scatter",   "insert": "?scatter("},
             {"label": "bar",       "insert": "?bar("},
