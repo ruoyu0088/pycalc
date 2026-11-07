@@ -581,6 +581,23 @@ body.resizing-sidebar {
 .side-card.empty .side-empty { display: block; }
 .side-card.empty .table-wrap { display: none; }
 
+.side-name-btn {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.side-name-btn:hover { text-decoration: underline; }
+.side-name-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .snippet-list {
   display: flex;
   flex-direction: column;

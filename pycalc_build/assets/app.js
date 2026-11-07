@@ -1049,12 +1049,33 @@
     if (card) card.classList.toggle('empty', state.snippets.length === 0);
   }
 
+  function closeMobileSidebarAfterInsert() {
+    if (window.innerWidth <= 880 && state.mobileSidebarOpen) {
+      state.mobileSidebarOpen = false;
+      applySidebar();
+    }
+  }
+
+  function insertNameIntoEditor(name) {
+    const text = String(name || '');
+    if (!text || !editor) return;
+    try {
+      editor.insertAtCursor(text);
+      if (editor.focus) editor.focus();
+      state.historyNav.index = null;
+      closeMobileSidebarAfterInsert();
+    } catch (err) {
+      banner('banner.copyFailed', { error: err.message || err }, 'bad');
+    }
+  }
+
   function insertSnippet(snippet) {
     if (!snippet || typeof snippet.code !== 'string') return;
     setEditorText(snippet.code, true);
     state.historyNav.index = null;
     state.historyNav.draft = snippet.code;
     if (editor && editor.focus) editor.focus();
+    closeMobileSidebarAfterInsert();
   }
 
   // ---------------------------------------------------------------------
@@ -1801,7 +1822,15 @@
         const isLongValue = valueText.length > VARIABLE_VALUE_INLINE_LIMIT
           || valueText.includes('\n');
         const tr = document.createElement('tr');
-        tr.appendChild(el('td', '', row.name));
+        const nameCell = document.createElement('td');
+        const nameBtn = document.createElement('button');
+        nameBtn.type = 'button';
+        nameBtn.className = 'side-name-btn';
+        nameBtn.textContent = row.name;
+        nameBtn.title = I18n.t('sidebar.insertName');
+        nameBtn.addEventListener('click', () => insertNameIntoEditor(row.name));
+        nameCell.appendChild(nameBtn);
+        tr.appendChild(nameCell);
         const typeCell = el('td', '', row.type);
         typeCell.title = row.type;
         tr.appendChild(typeCell);
@@ -1832,7 +1861,15 @@
       state.functions = Array.isArray(funcs) ? funcs : [];
       for (const row of funcs) {
         const tr = document.createElement('tr');
-        tr.appendChild(el('td', '', row.name));
+        const nameCell = document.createElement('td');
+        const nameBtn = document.createElement('button');
+        nameBtn.type = 'button';
+        nameBtn.className = 'side-name-btn';
+        nameBtn.textContent = row.name;
+        nameBtn.title = I18n.t('sidebar.insertName');
+        nameBtn.addEventListener('click', () => insertNameIntoEditor(row.name));
+        nameCell.appendChild(nameBtn);
+        tr.appendChild(nameCell);
         const paramsCell = el('td', '', row.params);
         paramsCell.title = row.params;
         tr.appendChild(paramsCell);
