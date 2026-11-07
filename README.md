@@ -125,15 +125,15 @@ Pyodide 官方 lock 里没有、但本身是纯 Python 的包，构建时会自�
 ```powershell
 python build.py --libs numpy sympy matplotlib polars plotly `
   --alias np=numpy --alias plt=matplotlib.pyplot --alias sp=sympy `
-  --alias pl=polars --alias ply=plotly.express --output dist\pycalc.html
+  --alias pl=polars --alias px=plotly.express --output dist\pycalc.html
 ```
 
-在页面里勾选 `ply`，然后：
+在页面里勾选 `px`，然后：
 
 ```python
 import pandas as pd
 df = pd.DataFrame({"x": [1, 2, 3], "y": [1, 4, 9]})
-ply.line(df, x="x", y="y", title="Plotly")
+px.line(df, x="x", y="y", title="Plotly")
 ```
 
 最后一行返回 Plotly `Figure` 时，会用 wheel 内自带的 `plotly.min.js` 渲染成交互图，替代该表达式的文本 repr；图会随会话保存，刷新后恢复。如果先赋值给 `fig`，把 `fig` 放在最后一行即可；不要用 `fig.show()`，它不返回值，PyCalc 抓不到图。构建体积约 82 MB。只支持纯 Python wheel；带原生扩展的包仍需 Pyodide 官方构建。

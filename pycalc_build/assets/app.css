@@ -835,6 +835,18 @@ pre.error {
   background: transparent !important;
 }
 
+@media (max-width: 640px) {
+  /* On phones the prompt column costs 40px of chart width.  Let rich charts
+     use it; the figure's own top/left margins keep the prompt clear. */
+  body:not(.hide-prompts) .io-row.plotly-row .output-body {
+    margin-left: -40px;
+  }
+  body:not(.hide-prompts) .io-row.plotly-row .prompt-btn.out {
+    position: relative;
+    z-index: 2;
+  }
+}
+
 .empty-state {
   max-width: 560px;
   margin: 42px auto;

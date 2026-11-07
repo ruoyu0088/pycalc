@@ -2363,6 +2363,20 @@
     layout.autosize = true;
     layout.paper_bgcolor = 'rgba(0,0,0,0)';
     layout.plot_bgcolor = 'rgba(0,0,0,0)';
+    // Plotly's default 80px left/right margins waste most of a phone screen.
+    // Keep enough room for axis labels, but let the plot use the cell width.
+    const compact = window.matchMedia('(max-width: 640px)').matches;
+    const defaultMargin = compact
+      ? { l: 44, r: 10, t: 44, b: 36, pad: 0 }
+      : { l: 56, r: 18, t: 48, b: 40, pad: 0 };
+    const figureMargin = spec.layout && spec.layout.margin;
+    layout.margin = Object.assign(
+      defaultMargin,
+      figureMargin && typeof figureMargin === 'object' ? figureMargin : {}
+    );
+    if (compact && layout.title && layout.title.text) {
+      layout.title = Object.assign({}, layout.title, { x: 0.5, xanchor: 'center' });
+    }
     if (!layout.template) {
       layout.template = document.documentElement.dataset.theme === 'light'
         ? 'plotly_white'
@@ -2377,6 +2391,7 @@
         Plotly.newPlot(host, spec.data || [], layout, {
           responsive: true,
           displaylogo: false,
+          displayModeBar: !compact,
           modeBarButtonsToRemove: ['lasso2d', 'select2d'],
         });
       } catch (err) {
@@ -2400,6 +2415,7 @@
       if (entry.stdout) body.appendChild(el('pre', 'stream', entry.stdout));
       if (entry.stderr) body.appendChild(el('pre', 'stream stderr', entry.stderr));
       const plotlyNode = entry.resultPlotly ? plotlyFigure(entry.resultPlotly) : null;
+      if (plotlyNode) outputRow.classList.add('plotly-row');
       const hideResult = state.ui.hidePlotResult && entry.images && entry.images.length > 0;
       if (
         !hideResult
