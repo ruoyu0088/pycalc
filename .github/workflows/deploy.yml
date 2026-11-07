@@ -16,7 +16,7 @@ concurrency:
 
 env:
   PYCALC_VERSION: "314.0.7"
-  PYCALC_LIBS: "numpy sympy matplotlib polars"
+  PYCALC_LIBS: "numpy sympy matplotlib polars plotly"
 
 jobs:
   build:
@@ -52,6 +52,7 @@ jobs:
             --alias plt=matplotlib.pyplot \
             --alias sp=sympy \
             --alias pl=polars \
+            --alias px=plotly.express \
             --pyodide-version "$PYCALC_VERSION" \
             --lang en \
             --output _site/index.html
