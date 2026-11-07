@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from dataclasses import dataclass, field
@@ -21,11 +22,16 @@ from .config import (
     PERSISTENCE_PACKAGE,
     SCHEMA_VERSION,
 )
-from .embed import encode_file, should_gzip_runtime
+from .embed import encode_asset, encode_file, should_gzip_runtime
 from .i18n import MESSAGES, tr
 from .keyboard_layout import LAYOUT as KEYBOARD_LAYOUT
 from .libraries import default_aliases
 from .pwa import write_pwa_files
+from .pypi import (
+    javascript_assets,
+    merge_lock_entries,
+    resolve_external_packages,
+)
 from .render import render_page
 from .resolve import Package, package_version_map, resolve_closure
 from .runtime import RuntimeSpec, ensure_runtime, ensure_wheel
@@ -147,11 +153,16 @@ def _ensure_wheels(
     *,
     config: BuildConfig,
     log: Log,
+    external_paths: Mapping[str, Path] | None = None,
 ) -> dict[str, Path]:
     paths: dict[str, Path] = {}
+    external_paths = external_paths or {}
     for pkg in packages:
         if not pkg.file_name:
             raise RuntimeError(f"package {pkg.name} has no file_name")
+        if pkg.name in external_paths:
+            paths[pkg.name] = external_paths[pkg.name]
+            continue
         path = ensure_wheel(
             spec,
             pkg.file_name,
@@ -193,6 +204,22 @@ def build(config: BuildConfig, log: Log | None = None) -> BuildResult:
         log=say,
         lang=config.lang,
     )
+    external = resolve_external_packages(
+        spec.lock,
+        roots,
+        pyodide_version=spec.version,
+        cache_dir=CACHE_DIR,
+        offline=config.offline,
+        refresh=config.refresh,
+        log=say,
+        lang=config.lang,
+    )
+    if external:
+        spec.lock = merge_lock_entries(spec.lock, external)
+        say(
+            "Pure-Python wheels: "
+            + ", ".join(f"{pkg.name} {pkg.version}" for pkg in external)
+        )
     closure = resolve_closure(spec.lock, roots)
     versions = package_version_map(closure)
     say(t("build.resolved", packages=", ".join(f"{name} {ver}" for name, ver in versions.items())))
@@ -206,7 +233,13 @@ def build(config: BuildConfig, log: Log | None = None) -> BuildResult:
     # selected packages do not provide.
     libraries = available_libraries(closure, alias_map)
 
-    wheel_paths = _ensure_wheels(spec, closure, config=config, log=say)
+    wheel_paths = _ensure_wheels(
+        spec,
+        closure,
+        config=config,
+        log=say,
+        external_paths={pkg.name: pkg.path for pkg in external},
+    )
     say(t(
         "build.prepared",
         count=len(wheel_paths),
@@ -235,11 +268,19 @@ def build(config: BuildConfig, log: Log | None = None) -> BuildResult:
     for name in ("pyodide.asm.wasm", "python_stdlib.zip", "pyodide-lock.json"):
         path = spec.assets[name]
         gzip_ok = config.gzip_wasm and should_gzip_runtime(name)
-        assets[name] = encode_file(path, gzip_ok=gzip_ok)
+        if name == "pyodide-lock.json" and external:
+            raw = json.dumps(
+                spec.lock, ensure_ascii=False, separators=(",", ":")
+            ).encode("utf-8")
+            assets[name] = encode_asset(raw, gzip_ok=gzip_ok)
+            raw_size = len(raw)
+        else:
+            assets[name] = encode_file(path, gzip_ok=gzip_ok)
+            raw_size = path.stat().st_size
         say(t(
             "build.inlineWheel",
             name=name,
-            raw=human_size(path.stat().st_size),
+            raw=human_size(raw_size),
             encoded=human_size(len(assets[name]["data"])),
         ))
 
@@ -255,6 +296,8 @@ def build(config: BuildConfig, log: Log | None = None) -> BuildResult:
 
     asm_source = spec.asm_path.read_text(encoding="utf-8")
     pyodide_js = spec.assets["pyodide.js"].read_text(encoding="utf-8")
+    js_assets = javascript_assets(external)
+    plotly_js = js_assets.get("plotly.min.js", "")
 
     page_config = {
         "appName": APP_NAME,
@@ -271,6 +314,8 @@ def build(config: BuildConfig, log: Log | None = None) -> BuildResult:
         "dbName": APP_DB_NAME,
         "appId": APP_ID,
         "schemaVersion": SCHEMA_VERSION,
+        "externalPackages": {pkg.name: pkg.version for pkg in external},
+        "plotlyCharts": bool(plotly_js),
     }
 
     say(t("build.render"))
@@ -281,6 +326,7 @@ def build(config: BuildConfig, log: Log | None = None) -> BuildResult:
         runtime_mode=spec.family,
         asm_source=asm_source,
         pyodide_js=pyodide_js,
+        plotly_js=plotly_js,
     )
 
     output = Path(config.output).resolve()

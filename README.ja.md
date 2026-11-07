@@ -118,6 +118,26 @@ df = pl.read_csv("https://example.com/data.csv")
 - レスポンス全体をメモリに読み込んでから Polars に渡すため、巨大な CSV は多くのメモリを使います。
 - このパッチは Python の `urllib`／`requests` 向けです。現在の Pyodide ビルドでは Polars の URL 読み込みが `urllib.request.urlopen` を通るため有効です。
 
+### 純 Python パッケージ：Plotly の例
+
+Pyodide 公式 lock にない純 Python パッケージは、ビルド時に PyPI から `*-none-any.whl` を取得し、wheel と依存関係をインライン化して、埋め込まれた lock に合成エントリを追加します。Emscripten ビルドは不要です。
+
+```powershell
+python build.py --libs numpy sympy matplotlib polars plotly `
+  --alias np=numpy --alias plt=matplotlib.pyplot --alias sp=sympy `
+  --alias pl=polars --alias ply=plotly.express --output dist\pycalc.html
+```
+
+ページで `ply` をチェックしてから：
+
+```python
+import pandas as pd
+df = pd.DataFrame({"x": [1, 2, 3], "y": [1, 4, 9]})
+ply.line(df, x="x", y="y", title="Plotly")
+```
+
+最後の式が Plotly の `Figure` を返すと、wheel に同梱された `plotly.min.js` でインタラクティブなグラフとして描画され、テキスト表現の代わりになります。グラフはセッションと一緒に保存され、再読み込み後も復元されます。`fig` に代入する場合は最後の行に `fig` を書いてください。`fig.show()` は値を返さないため PyCalc はグラフを取得できません。ビルドサイズは約 82 MB です。純 Python の wheel のみ対応し、ネイティブ拡張を含むパッケージは Pyodide 公式ビルドが必要です。
+
 ---
 
 ## GitHub Pages の自動デプロイ

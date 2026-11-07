@@ -118,6 +118,26 @@ Limits:
 - The whole response is downloaded into memory before Polars parses it, so very large CSVs need a lot of memory.
 - The patch targets Python `urllib`/`requests`; in the current Pyodide build Polars reads URLs through `urllib.request.urlopen`, so it applies.
 
+### Pure-Python packages: Plotly example
+
+Packages that are not in the official Pyodide lock but are pure Python are fetched from PyPI as `*-none-any.whl` files at build time. The wheel and its dependencies are inlined, and synthetic entries are added to the embedded lock—no Emscripten build is required.
+
+```powershell
+python build.py --libs numpy sympy matplotlib polars plotly `
+  --alias np=numpy --alias plt=matplotlib.pyplot --alias sp=sympy `
+  --alias pl=polars --alias ply=plotly.express --output dist\pycalc.html
+```
+
+Tick `ply` in the page, then:
+
+```python
+import pandas as pd
+df = pd.DataFrame({"x": [1, 2, 3], "y": [1, 4, 9]})
+ply.line(df, x="x", y="y", title="Plotly")
+```
+
+When the last expression returns a Plotly `Figure`, the wheel's bundled `plotly.min.js` renders it as an interactive chart instead of the text repr. Charts are saved with the session and restored after a refresh. If you assign it to `fig`, put `fig` on the last line; do not call `fig.show()`, because it returns nothing and PyCalc cannot capture the figure. The build is about 82 MB. Only pure-Python wheels are supported; packages with native extensions still need an official Pyodide build.
+
 ---
 
 ## Automatic GitHub Pages Deployment

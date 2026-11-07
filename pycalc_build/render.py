@@ -47,6 +47,7 @@ def render_page(
     runtime_mode: str,
     asm_source: str,
     pyodide_js: str,
+    plotly_js: str = "",
 ) -> str:
     template = _read_text(TEMPLATE_PATH, "page.html")
     css = _read_text(ASSETS_DIR / "app.css", "app.css")
@@ -63,6 +64,8 @@ def render_page(
     _check_inline_script(worker_js, "runtime_worker.js")
     _check_inline_script(glue, "python_glue.py")
     _check_inline_script(asm_source, f"pyodide asm ({runtime_mode})")
+    if plotly_js:
+        _check_inline_script(plotly_js, "plotly.min.js")
 
     if runtime_mode == "esm":
         asm_block = (
@@ -87,6 +90,8 @@ def render_page(
     ):
         raise RenderError("JSON payload contains </script and cannot be inlined")
 
+    plotly_block = f"<script>{plotly_js}</script>" if plotly_js else ""
+
     replacements = {
         "__PYCALC_CSS__": css,
         "__PYCALC_KEYBOARD_CSS__": keyboard_css,
@@ -99,6 +104,7 @@ def render_page(
         "__PYCALC_PYODIDE_JS__": pyodide_js,
         "__PYCALC_WORKER_JS__": worker_js,
         "__PYCALC_EDITOR_JS__": editor_js,
+        "__PYCALC_PLOTLY_JS__": plotly_block,
         "__PYCALC_APP_JS__": app_js,
     }
     page = template

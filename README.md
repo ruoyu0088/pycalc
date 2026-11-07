@@ -118,6 +118,26 @@ df = pl.read_csv("https://example.com/data.csv")
 - 响应会先完整进入内存，再交给 Polars，超大 CSV 可能占用较多内存。
 - 该补丁针对 Python `urllib`/`requests`；Polars 的 URL 路径在当前 Pyodide 构建中走 `urllib.request.urlopen`，因此适用。
 
+### 纯 Python 包：以 Plotly 为例
+
+Pyodide 官方 lock 里没有、但本身是纯 Python 的包，构建时会自动从 PyPI 取 `*-none-any.whl`，把 wheel 和依赖一起内联，并向嵌入的 lock 注入条目；不需要 Emscripten 编译。
+
+```powershell
+python build.py --libs numpy sympy matplotlib polars plotly `
+  --alias np=numpy --alias plt=matplotlib.pyplot --alias sp=sympy `
+  --alias pl=polars --alias ply=plotly.express --output dist\pycalc.html
+```
+
+在页面里勾选 `ply`，然后：
+
+```python
+import pandas as pd
+df = pd.DataFrame({"x": [1, 2, 3], "y": [1, 4, 9]})
+ply.line(df, x="x", y="y", title="Plotly")
+```
+
+最后一行返回 Plotly `Figure` 时，会用 wheel 内自带的 `plotly.min.js` 渲染成交互图，替代该表达式的文本 repr；图会随会话保存，刷新后恢复。如果先赋值给 `fig`，把 `fig` 放在最后一行即可；不要用 `fig.show()`，它不返回值，PyCalc 抓不到图。构建体积约 82 MB。只支持纯 Python wheel；带原生扩展的包仍需 Pyodide 官方构建。
+
 ---
 
 ## GitHub Pages 自动部署

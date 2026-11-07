@@ -448,5 +448,15 @@ LAYOUT = {
             {"label": "diff",         "insert": ".diff("},
             {"label": "cum_sum",      "insert": ".cum_sum("},
         ],
+        "plotly.express": [
+            {"label": "ply",       "insert": "ply"},
+            {"label": "line",      "insert": "?line("},
+            {"label": "scatter",   "insert": "?scatter("},
+            {"label": "bar",       "insert": "?bar("},
+            {"label": "histogram", "insert": "?histogram("},
+            {"label": "box",       "insert": "?box("},
+            {"label": "imshow",    "insert": "?imshow("},
+            {"label": "update",    "insert": ".update("},
+        ],
     },
 }

@@ -1175,6 +1175,45 @@ def _pycalc_sympy_math(value):
         return None, None
 
 
+def _pycalc_plotly_result(value):
+    """Serialize a Plotly figure returned by the last expression.
+
+    Plotly has no pyplot-style global figure registry, so the value of the
+    cell's final expression is the only reliable signal.  Returning the JSON
+    (rather than an image) lets the frontend keep the figure interactive.
+    """
+
+    if value is None:
+        return None
+    try:
+        from plotly.basedatatypes import BaseFigure
+    except Exception:
+        return None
+    if not isinstance(value, BaseFigure):
+        return None
+    try:
+        payload = value.to_json()
+        if not isinstance(payload, str) or not payload.lstrip().startswith("{"):
+            return None
+        if len(payload) > 4_000_000:
+            payload = json.dumps(
+                {
+                    "data": [],
+                    "layout": {
+                        "annotations": [
+                            {
+                                "text": "Plotly figure is too large to display",
+                                "showarrow": False,
+                            }
+                        ]
+                    },
+                }
+            )
+        return payload
+    except Exception:
+        return None
+
+
 def _pycalc_run(code, display_json="{}"):
     globals_dict = _pycalc_user_globals()
     try:
@@ -1196,6 +1235,7 @@ def _pycalc_run(code, display_json="{}"):
         result_table = None
         result_numbers = None
         result_array = None
+        result_plotly = None
         if tree.body and isinstance(tree.body[-1], ast.Expr):
             body = ast.Module(body=tree.body[:-1], type_ignores=[])
             if body.body:
@@ -1220,6 +1260,7 @@ def _pycalc_run(code, display_json="{}"):
                     result_numbers = _pycalc_number_tree(value)
                 if _pycalc_has_sympy(value):
                     result_math_all = _pycalc_math_all(value)
+                result_plotly = _pycalc_plotly_result(value)
                 # ans always points at the most recent non-None cell result;
                 # None / statements / errors leave the previous value intact.
                 globals_dict["ans"] = value
@@ -1236,6 +1277,7 @@ def _pycalc_run(code, display_json="{}"):
                 "resultTable": result_table,
                 "resultNumbers": result_numbers,
                 "resultArray": result_array,
+                "resultPlotly": result_plotly,
             },
             ensure_ascii=False,
         )

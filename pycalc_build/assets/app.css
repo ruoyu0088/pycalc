@@ -824,6 +824,17 @@ pre.error {
   align-self: flex-start;
 }
 
+.plotly-figure {
+  width: 100%;
+  min-width: 0;
+  height: 340px;
+  margin-top: 4px;
+}
+
+.plotly-figure .modebar {
+  background: transparent !important;
+}
+
 .empty-state {
   max-width: 560px;
   margin: 42px auto;

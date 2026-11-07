@@ -2051,7 +2051,8 @@
     return Boolean(
       entry.stdout || entry.stderr ||
       (entry.result !== null && entry.result !== undefined) ||
-      entry.error || (entry.images && entry.images.length)
+      entry.error || entry.resultPlotly ||
+      (entry.images && entry.images.length)
     );
   }
 
@@ -2348,6 +2349,43 @@
     return wrap;
   }
 
+  function plotlyFigure(specJson) {
+    if (!specJson || typeof Plotly === 'undefined') return null;
+    let spec;
+    try {
+      spec = JSON.parse(specJson);
+    } catch (err) {
+      return null;
+    }
+    if (!spec || typeof spec !== 'object') return null;
+    const host = el('div', 'plotly-figure');
+    const layout = Object.assign({}, spec.layout || {});
+    layout.autosize = true;
+    layout.paper_bgcolor = 'rgba(0,0,0,0)';
+    layout.plot_bgcolor = 'rgba(0,0,0,0)';
+    if (!layout.template) {
+      layout.template = document.documentElement.dataset.theme === 'light'
+        ? 'plotly_white'
+        : 'plotly_dark';
+    }
+    layout.font = Object.assign(
+      { color: getComputedStyle(document.body).color },
+      layout.font || {}
+    );
+    requestAnimationFrame(() => {
+      try {
+        Plotly.newPlot(host, spec.data || [], layout, {
+          responsive: true,
+          displaylogo: false,
+          modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+        });
+      } catch (err) {
+        host.textContent = String(err);
+      }
+    });
+    return host;
+  }
+
   function makeCell(entry) {
     const cell = el('div', 'entry');
     const inputRow = el('div', 'io-row io-input');
@@ -2361,8 +2399,14 @@
       const body = el('div', 'output-body');
       if (entry.stdout) body.appendChild(el('pre', 'stream', entry.stdout));
       if (entry.stderr) body.appendChild(el('pre', 'stream stderr', entry.stderr));
+      const plotlyNode = entry.resultPlotly ? plotlyFigure(entry.resultPlotly) : null;
       const hideResult = state.ui.hidePlotResult && entry.images && entry.images.length > 0;
-      if (!hideResult && entry.result !== null && entry.result !== undefined) {
+      if (
+        !hideResult
+        && !plotlyNode
+        && entry.result !== null
+        && entry.result !== undefined
+      ) {
         if (state.ui.dataframeOutput === 'table' && entry.resultTable) {
           body.appendChild(dataframeTable(entry.resultTable));
         } else if (
@@ -2394,6 +2438,7 @@
         }
       }
       if (entry.error) body.appendChild(el('pre', 'error', entry.error));
+      if (plotlyNode) body.appendChild(plotlyNode);
       if (entry.images && entry.images.length) {
         const images = el('div', 'images');
         for (const image of entry.images) {
@@ -2627,6 +2672,7 @@
       resultTable: null,
       resultNumbers: null,
       resultArray: null,
+      resultPlotly: null,
       error: null,
       images: [],
     };
@@ -2652,6 +2698,7 @@
       entry.resultTable = result.ok ? (result.resultTable || null) : null;
       entry.resultNumbers = result.ok ? (result.resultNumbers || null) : null;
       entry.resultArray = result.ok ? (result.resultArray || null) : null;
+      entry.resultPlotly = result.ok ? (result.resultPlotly || null) : null;
       entry.error = result.ok ? null : result.error;
       try {
         const images = JSON.parse(await py.figures());
@@ -3297,6 +3344,7 @@
       stdout: entry.stdout,
       stderr: entry.stderr,
       images: (entry.images || []).length,
+      plotly: Boolean(entry.resultPlotly),
     })),
     undo: () => { undoHistory(); return state.history.length; },
     redo: () => { redoHistory(); return state.history.length; },
