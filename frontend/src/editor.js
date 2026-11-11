@@ -167,6 +167,46 @@ function moveCursorWord(view, direction) {
   });
 }
 
+function insertBlock(view, text) {
+  const state = view.state;
+  const selection = state.selection.main;
+  const doc = state.doc;
+  const value = String(text == null ? '' : text);
+  if (!value) return;
+
+  let from = selection.from;
+  let to = selection.to;
+
+  if (!selection.empty) {
+    const before = from > 0 ? doc.sliceString(from - 1, from) : '';
+    const after = to < doc.length ? doc.sliceString(to, to + 1) : '';
+    const prefix = from > 0 && before !== '\n' ? '\n' : '';
+    const suffix = !value.endsWith('\n') && to < doc.length && after !== '\n' ? '\n' : '';
+    const insert = prefix + value + suffix;
+    view.dispatch({
+      changes: { from, to, insert },
+      selection: { anchor: from + insert.length },
+    });
+    return;
+  }
+
+  const line = doc.lineAt(from);
+  if (from > line.from && from < line.to) {
+    from = line.to;
+    to = line.to;
+  }
+
+  const before = from > 0 ? doc.sliceString(from - 1, from) : '';
+  const after = from < doc.length ? doc.sliceString(from, from + 1) : '';
+  const prefix = from > 0 && before !== '\n' ? '\n' : '';
+  const suffix = !value.endsWith('\n') && from < doc.length && after !== '\n' ? '\n' : '';
+  const insert = prefix + value + suffix;
+  view.dispatch({
+    changes: { from, to, insert },
+    selection: { anchor: from + insert.length },
+  });
+}
+
 function findCallContext(state) {
   const position = state.selection.main.head;
   const text = state.doc.toString();
@@ -546,6 +586,10 @@ export function create(parent, options = {}) {
     },
     insertAtCursor: (text, options = {}) => {
       view.dispatch(view.state.replaceSelection(String(text)));
+      if (options.focus !== false) view.focus();
+    },
+    insertBlockAtCursor: (text, options = {}) => {
+      insertBlock(view, text);
       if (options.focus !== false) view.focus();
     },
     insertTab: () => {

@@ -2076,7 +2076,11 @@
     }
     try {
       // Insert at the current selection; never clear the whole editor.
-      editor.insertAtCursor(text);
+      if (kind === 'in' && typeof editor.insertBlockAtCursor === 'function') {
+        editor.insertBlockAtCursor(text);
+      } else {
+        editor.insertAtCursor(text);
+      }
       editor.focus();
       state.historyNav.index = null;
       toast(kind === 'in' ? 'console.copiedInput' : 'console.copiedOutput');
@@ -3192,6 +3196,7 @@
         getValue: () => cm.getValue(),
         setValue: (value) => cm.setValue(value),
         insertAtCursor: (text, options) => cm.insertAtCursor(text, options),
+        insertBlockAtCursor: (text, options) => cm.insertBlockAtCursor(text, options),
         insertTab: () => cm.insertTab(),
         insertNewline: () => cm.insertNewline(),
         undo: () => cm.undo(),
@@ -3259,6 +3264,38 @@
         const start = textarea.selectionStart;
         const end = textarea.selectionEnd;
         textarea.setRangeText(text, start, end, 'end');
+        onInput();
+      },
+      insertBlockAtCursor: (text) => {
+        const value = String(text == null ? '' : text);
+        if (!value) return;
+        const doc = textarea.value;
+        let start = textarea.selectionStart;
+        let end = textarea.selectionEnd;
+
+        if (start !== end) {
+          const before = start > 0 ? doc.slice(start - 1, start) : '';
+          const after = end < doc.length ? doc.slice(end, end + 1) : '';
+          const prefix = start > 0 && before !== '\n' ? '\n' : '';
+          const suffix = !value.endsWith('\n') && end < doc.length && after !== '\n' ? '\n' : '';
+          const insert = prefix + value + suffix;
+          textarea.setRangeText(insert, start, end, 'end');
+          onInput();
+          return;
+        }
+
+        const lineStart = doc.lastIndexOf('\n', start - 1) + 1;
+        const lineEnd = doc.indexOf('\n', start);
+        const actualEnd = lineEnd === -1 ? doc.length : lineEnd;
+        if (start > lineStart && start < actualEnd) {
+          start = actualEnd;
+        }
+        const before = start > 0 ? doc.slice(start - 1, start) : '';
+        const after = start < doc.length ? doc.slice(start, start + 1) : '';
+        const prefix = start > 0 && before !== '\n' ? '\n' : '';
+        const suffix = !value.endsWith('\n') && start < doc.length && after !== '\n' ? '\n' : '';
+        const insert = prefix + value + suffix;
+        textarea.setRangeText(insert, start, start, 'end');
         onInput();
       },
       setCursorEnd: () => {
