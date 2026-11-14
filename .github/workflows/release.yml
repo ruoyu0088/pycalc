@@ -1,0 +1,79 @@
+name: Release single-file HTML
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYCALC_VERSION: "314.0.7"
+  PYCALC_LIBS: "numpy sympy matplotlib polars plotly"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Prepare cache directory
+        run: mkdir -p cache
+
+      - name: Cache Pyodide runtime and wheels
+        uses: actions/cache@v4
+        with:
+          path: cache
+          key: pycalc-cache-v1-${{ runner.os }}-${{ env.PYCALC_VERSION }}-full
+          restore-keys: |
+            pycalc-cache-v1-${{ runner.os }}-${{ env.PYCALC_VERSION }}-
+
+      - name: Build the single-file HTML
+        run: |
+          python build.py \
+            --libs $PYCALC_LIBS \
+            --alias np=numpy \
+            --alias plt=matplotlib.pyplot \
+            --alias sp=sympy \
+            --alias pl=polars \
+            --alias px=plotly.express \
+            --pyodide-version "$PYCALC_VERSION" \
+            --lang en \
+            --output dist/pycalc.html
+
+      - name: Package the HTML
+        run: |
+          mkdir -p release
+          cp dist/pycalc.html release/pycalc.html
+          cd release
+          zip -9 "../pycalc-${GITHUB_REF_NAME}-html.zip" pycalc.html
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f "doc/releases/${GITHUB_REF_NAME}.md" ]; then
+            NOTES=(--notes-file "doc/releases/${GITHUB_REF_NAME}.md")
+          else
+            NOTES=(--generate-notes)
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            "pycalc-${GITHUB_REF_NAME}-html.zip" \
+            --verify-tag \
+            --title "PyCalc ${GITHUB_REF_NAME}" \
+            "${NOTES[@]}" \
+            --latest

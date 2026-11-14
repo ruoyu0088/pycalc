@@ -1285,7 +1285,7 @@ def test_new_features() -> None:
         )
         assert width_after > width_before, (width_before, width_after)
 
-        # compact number prompts insert at the cursor without clearing the editor
+        # compact number prompts insert at the cursor as a separate block
         prompt_texts = browser.eval(
             "[...document.querySelectorAll('.prompt-btn')].map((item) => item.textContent)"
         )
@@ -1302,7 +1302,7 @@ def test_new_features() -> None:
             ".querySelector('.prompt-btn.in').click()"
         )
         inserted_input = browser.eval("window.__pycalc.getEditorValue()")
-        assert inserted_input.startswith("prefix x = 1"), inserted_input
+        assert inserted_input.startswith("prefix \nx = 1"), inserted_input
         browser.eval("window.__pycalc.setEditorText('')")
         browser.eval(
             "[...document.querySelectorAll('.prompt-btn.out')].at(-1).click()"
