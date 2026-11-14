@@ -2,7 +2,7 @@
 
 [中文](README.md) | [English](README.en.md) | **[日本語](README.ja.md)**
 
-<img src="./doc/iphone_shot.png" width="500" alt="screenshot">
+<img src="./doc/shot.png" width="500" alt="screenshot">
 
 https://ruoyu0088.github.io/pycalc
 
