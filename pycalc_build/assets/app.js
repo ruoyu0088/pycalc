@@ -449,6 +449,8 @@
     attributeCache: new Map(),
     historyNav: { index: null, draft: '' },
     redoStack: [],
+    deleteStack: [],
+    promptMenu: null,
     suppressEditorSave: false,
     ui: { ...DEFAULT_UI },
     status: null,
@@ -1443,6 +1445,7 @@
     state.namespaceMeta = data.namespaceMeta || null;
     state.historyNav = { index: null, draft: '' };
     state.redoStack = [];
+    state.deleteStack = [];
     renderConsole();
     resetEditorForSession(state.draft);
     renderLibraryBar();
@@ -1692,6 +1695,7 @@
       }
       state.history = [];
       state.redoStack = [];
+      state.deleteStack = [];
       state.executionCount = 0;
       state.draft = '';
       state.namespace = null;
@@ -2039,6 +2043,7 @@
   }
 
   function outputText(entry) {
+    if (entry.outputHidden) return '';
     const parts = [];
     if (entry.stdout) parts.push(entry.stdout.replace(/\n$/, ''));
     if (entry.stderr) parts.push(entry.stderr.replace(/\n$/, ''));
@@ -2048,6 +2053,7 @@
   }
 
   function hasOutput(entry) {
+    if (entry.outputHidden) return false;
     return Boolean(
       entry.stdout || entry.stderr ||
       (entry.result !== null && entry.result !== undefined) ||
@@ -2064,7 +2070,18 @@
     button.dataset.n = String(n);
     button.textContent = `[${n}]`;
     button.title = I18n.t(kind === 'in' ? 'console.inputPromptTitle' : 'console.outputPromptTitle');
-    button.addEventListener('click', () => insertEntryText(entry, kind));
+    button.addEventListener('click', (event) => {
+      // A long-press on touch opens the context menu; ignore the
+      // synthetic click the browser fires when the finger is released.
+      if (lastPromptMenu && lastPromptMenu.button === button
+          && Date.now() - lastPromptMenu.at < 700) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      insertEntryText(entry, kind);
+    });
+    attachPromptMenu(button, entry, kind);
     return button;
   }
 
@@ -2087,6 +2104,213 @@
     } catch (err) {
       banner('banner.copyFailed', { error: err.message || err }, 'bad');
     }
+  }
+
+  // ---------------------------------------------------------------------
+  // Console prompt context menu (copy / delete)
+  // ---------------------------------------------------------------------
+
+  let lastPromptMenu = null;
+
+  function attachPromptMenu(button, entry, kind) {
+    const show = (x, y) => {
+      lastPromptMenu = { button, at: Date.now() };
+      openPromptMenu(entry, kind, x, y);
+    };
+
+    button.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      show(event.clientX, event.clientY);
+    });
+
+    if (typeof window.PointerEvent !== 'function') return;
+
+    let timer = null;
+    let startX = 0;
+    let startY = 0;
+    const cancel = () => {
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+    button.addEventListener('pointerdown', (event) => {
+      if (event.pointerType === 'mouse') return;
+      startX = event.clientX;
+      startY = event.clientY;
+      cancel();
+      timer = setTimeout(() => {
+        timer = null;
+        show(startX, startY);
+      }, 500);
+    });
+    button.addEventListener('pointermove', (event) => {
+      if (timer === null) return;
+      if (Math.abs(event.clientX - startX) > 8 || Math.abs(event.clientY - startY) > 8) {
+        cancel();
+      }
+    });
+    button.addEventListener('pointerup', cancel);
+    button.addEventListener('pointercancel', cancel);
+    button.addEventListener('pointerleave', cancel);
+  }
+
+  function openPromptMenu(entry, kind, x, y) {
+    const menu = $('prompt-menu');
+    if (!menu) return;
+    const copy = menu.querySelector('[data-action="copy"]');
+    const del = menu.querySelector('[data-action="delete"]');
+    if (copy) {
+      copy.textContent = I18n.t(kind === 'in' ? 'console.menuCopyCode' : 'console.menuCopyOutput');
+    }
+    if (del) {
+      del.textContent = I18n.t(kind === 'in' ? 'console.menuDeleteEntry' : 'console.menuDeleteOutput');
+    }
+    state.promptMenu = { entry, kind };
+    menu.classList.remove('hidden');
+    menu.style.left = '0px';
+    menu.style.top = '0px';
+    const rect = menu.getBoundingClientRect();
+    let left = x;
+    let top = y;
+    if (left + rect.width > window.innerWidth - 8) {
+      left = window.innerWidth - rect.width - 8;
+    }
+    if (top + rect.height > window.innerHeight - 8) {
+      top = window.innerHeight - rect.height - 8;
+    }
+    menu.style.left = `${Math.max(8, Math.round(left))}px`;
+    menu.style.top = `${Math.max(8, Math.round(top))}px`;
+  }
+
+  function closePromptMenu() {
+    const menu = $('prompt-menu');
+    if (!menu) return;
+    menu.classList.add('hidden');
+    state.promptMenu = null;
+  }
+
+  function deleteEntryAt(index) {
+    if (index < 0 || index >= state.history.length) return;
+    const entry = state.history[index];
+    state.history.splice(index, 1);
+    if (entry.n === state.executionCount) {
+      state.executionCount = Math.max(0, state.executionCount - 1);
+    }
+    state.deleteStack.push({ kind: 'entry', entry, index });
+    if (state.deleteStack.length > 50) state.deleteStack.shift();
+    state.redoStack = [];
+    state.historyNav = { index: null, draft: '' };
+    renderConsole();
+    updateHistoryButtons();
+    queueSave({ snapshot: false });
+  }
+
+  function deleteEntryOutput(entry) {
+    if (!entry || entry.outputHidden) return;
+    if (!hasOutput(entry)) return;
+    const index = state.history.indexOf(entry);
+    if (index < 0) return;
+    entry.outputHidden = true;
+    state.deleteStack.push({ kind: 'output', entry, index });
+    if (state.deleteStack.length > 50) state.deleteStack.shift();
+    state.historyNav = { index: null, draft: '' };
+    renderConsole();
+    updateHistoryButtons();
+    queueSave({ snapshot: false });
+  }
+
+  function fallbackCopyText(value) {
+    const area = document.createElement('textarea');
+    area.value = value;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.top = '-1000px';
+    area.style.left = '-1000px';
+    document.body.appendChild(area);
+    let ok = false;
+    try {
+      area.focus();
+      area.select();
+      area.setSelectionRange(0, area.value.length);
+      ok = document.execCommand('copy');
+    } catch (_) {
+      ok = false;
+    } finally {
+      area.remove();
+    }
+    return ok;
+  }
+
+  function copyTextToClipboard(text) {
+    const value = String(text == null ? '' : text);
+    if (!value) return Promise.resolve(false);
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      return navigator.clipboard.writeText(value).then(
+        () => true,
+        () => fallbackCopyText(value)
+      );
+    }
+    return Promise.resolve(fallbackCopyText(value));
+  }
+
+  function handlePromptMenuAction(action) {
+    const context = state.promptMenu;
+    if (!context) return;
+    const { entry, kind } = context;
+    if (action === 'copy') {
+      const text = kind === 'in' ? entry.code : outputText(entry);
+      if (!text) {
+        toast('console.noText');
+        return;
+      }
+      copyTextToClipboard(text).then((ok) => {
+        toast(ok ? 'console.copiedToClipboard' : 'console.clipboardFailed');
+      }).catch(() => {
+        toast('console.clipboardFailed');
+      });
+      return;
+    }
+    if (action === 'delete') {
+      if (kind === 'in') {
+        deleteEntryAt(state.history.indexOf(entry));
+      } else {
+        deleteEntryOutput(entry);
+      }
+    }
+  }
+
+  function setupPromptMenu() {
+    if ($('prompt-menu')) return;
+    const menu = document.createElement('div');
+    menu.id = 'prompt-menu';
+    menu.className = 'prompt-menu hidden';
+    menu.setAttribute('role', 'menu');
+    menu.innerHTML = `
+      <button type="button" class="prompt-menu-item" data-action="copy" role="menuitem"></button>
+      <button type="button" class="prompt-menu-item danger" data-action="delete" role="menuitem"></button>
+    `;
+    document.getElementById('app').appendChild(menu);
+
+    menu.addEventListener('click', (event) => {
+      const target = event.target.closest('[data-action]');
+      if (!target) return;
+      const action = target.dataset.action;
+      handlePromptMenuAction(action);
+      closePromptMenu();
+    });
+
+    document.addEventListener('pointerdown', (event) => {
+      if (menu.classList.contains('hidden')) return;
+      if (menu.contains(event.target)) return;
+      closePromptMenu();
+    }, true);
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closePromptMenu();
+    });
+    window.addEventListener('resize', closePromptMenu);
+    window.addEventListener('scroll', closePromptMenu, true);
   }
 
   function mathResult(mathml) {
@@ -2557,12 +2781,28 @@
     const undo = $('history-undo');
     const redo = $('history-redo');
     if (!undo || !redo) return;
-    undo.disabled = state.busy || state.history.length === 0;
+    undo.disabled = state.busy || (state.history.length === 0 && state.deleteStack.length === 0);
     redo.disabled = state.busy || state.redoStack.length === 0;
   }
 
   function undoHistory() {
-    if (state.busy || state.history.length === 0) return;
+    if (state.busy) return;
+    if (state.deleteStack.length > 0) {
+      const item = state.deleteStack.pop();
+      if (item.kind === 'entry') {
+        const at = Math.max(0, Math.min(item.index, state.history.length));
+        state.history.splice(at, 0, item.entry);
+        state.executionCount = Math.max(state.executionCount, Number(item.entry.n) || 0);
+      } else if (item.kind === 'output') {
+        item.entry.outputHidden = false;
+      }
+      state.historyNav = { index: null, draft: '' };
+      renderConsole();
+      updateHistoryButtons();
+      queueSave({ snapshot: false });
+      return;
+    }
+    if (state.history.length === 0) return;
     const entry = state.history.pop();
     state.redoStack.push(entry);
     if (entry.n === state.executionCount) {
@@ -3067,6 +3307,7 @@
   // ---------------------------------------------------------------------
 
   function bindUi() {
+    setupPromptMenu();
     $('run').addEventListener('click', runCode);
     $('session-select').addEventListener('change', (event) => switchSession(event.target.value));
     $('session-title').addEventListener('click', (event) => {
