@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 APP_NAME = "PyCalc"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 
 # Absolute path of pycalc-app/ (the directory that contains build.py).
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -33,4 +33,4 @@ APP_DB_NAME = "pycalc-app-v1"
 APP_ID = "pycalc-app-5c0f9e2a-8f4b-4f1e-9d7a-2b6c1e8f3a41"
 SCHEMA_VERSION = 2
 
-USER_AGENT = "PyCalc-Builder/1.2 (+https://github.com/ruoyu0088/pycalc)"
+USER_AGENT = "PyCalc-Builder/1.3 (+https://github.com/ruoyu0088/pycalc)"
