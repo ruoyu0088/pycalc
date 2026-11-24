@@ -921,14 +921,74 @@ def test_full_314() -> None:
         time.sleep(0.2)
         assert browser.eval("document.querySelectorAll('pre.result').length") == 3
 
-        # The gear opens the full display-settings dialog.
+        # The gear opens the full display-settings dialog, which now owns theme.
+        assert browser.eval("document.getElementById('theme-toggle') === null") is True
+        assert browser.eval("!document.getElementById('ai-prompt').classList.contains('hidden')") is True
         browser.eval("document.getElementById('display-settings').click()")
         time.sleep(0.2)
         assert browser.eval("!document.getElementById('display-dialog').classList.contains('hidden')")
         assert browser.eval(
             "document.querySelector('input[name=sympy-output]:checked').value"
         ) == "text"
+        prev_theme = browser.eval("document.documentElement.dataset.theme")
+        next_theme = "dark" if prev_theme == "light" else "light"
+        browser.eval(
+            f"document.querySelector('input[name=\"ui-theme\"][value=\"{next_theme}\"]').click()"
+        )
+        time.sleep(0.2)
+        assert browser.eval("document.documentElement.dataset.theme") == next_theme
+        browser.eval(
+            f"document.querySelector('input[name=\"ui-theme\"][value=\"{prev_theme}\"]').click()"
+        )
+        time.sleep(0.2)
+        assert browser.eval("document.documentElement.dataset.theme") == prev_theme
         browser.eval("document.getElementById('display-close').click()")
+
+        # AI Prompt helper dialog: language-aware prompt assembly and code extraction
+        browser.eval("window.__pycalc.setEditorText('draft_val = 42')")
+        browser.eval("document.getElementById('ai-prompt').click()")
+        time.sleep(0.2)
+        assert browser.eval("!document.getElementById('ai-dialog').classList.contains('hidden')")
+        prompt_en = browser.eval(
+            "window.__pycalc.buildAiPrompt({historyScope: 'recent', historyCount: 1, includeOutputs: true, includeEditor: true, includeContext: true, userPrompt: 'Plot a sine wave'})"
+        )
+        assert "Runtime Environment" in prompt_en and "Plot a sine wave" in prompt_en, prompt_en
+        assert "draft_val = 42" in prompt_en and "sp" in prompt_en, prompt_en
+        browser.eval("window.__pycalc.setLanguage('zh')")
+        prompt_zh = browser.eval(
+            "window.__pycalc.buildAiPrompt({historyScope: 'none', includeEditor: false, userPrompt: '计算积分'})"
+        )
+        assert "运行环境与约束" in prompt_zh and "计算积分" in prompt_zh, prompt_zh
+        assert "draft_val = 42" not in prompt_zh, prompt_zh
+        browser.eval("window.__pycalc.setLanguage('en')")
+        browser.eval(
+            """document.getElementById('ai-response').value =
+              'Here is the code:\\n```python\\nx_ai = 123\\nprint(x_ai)\\n```\\nDone!'"""
+        )
+        browser.eval("document.getElementById('ai-extract-code').click()")
+        time.sleep(0.2)
+        assert browser.eval("document.getElementById('ai-dialog').classList.contains('hidden')")
+        assert browser.eval("window.__pycalc.getEditorValue()") == "x_ai = 123\nprint(x_ai)"
+        browser.eval("window.__pycalc.setEditorText('')")
+
+        # Built-in display() formats intermediate SymPy/NumPy values like the last line
+        browser.eval("window.__pycalc.setDisplaySettings({sympyOutput: 'math', numpyOutput: 'table'})")
+        time.sleep(0.2)
+        disp_entry = browser.run_cell(
+            "display(sp.Eq(sp.Symbol('z'), sp.sin(x)))\ndisplay(np.array([[1, 2], [3, 4]]))\n42"
+        )
+        assert disp_entry["result"] == "42", disp_entry
+        assert browser.eval("window.__pycalc.history().at(-1).displays") == 2
+        assert browser.eval(
+            "document.querySelectorAll('.entry:last-child .math-result math').length"
+        ) == 1
+        assert browser.eval(
+            "document.querySelectorAll('.entry:last-child .np-table').length"
+        ) == 1
+        assert browser.eval(
+            "document.querySelector('.entry:last-child pre.result').textContent"
+        ) == "42"
+        browser.eval("window.__pycalc.setDisplaySettings({sympyOutput: 'text', numpyOutput: 'default'})")
 
         # Float precision is significant-digit based and applies to history
         # through a per-result number tree; strings inside containers survive.

@@ -59,8 +59,8 @@ __PYCALC_KEYBOARD_CSS__
       <button id="display-settings" class="icon-btn" data-i18n-title="display.open">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"></path></svg>
       </button>
-      <button id="theme-toggle" class="icon-btn" data-i18n-title="theme.toggleTitle">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg>
+      <button id="ai-prompt" class="icon-btn" type="button" data-i18n-title="ai.open">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z"></path><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16Z"></path></svg>
       </button>
       <button id="sidebar-toggle" class="icon-btn" data-i18n-title="sidebar.toggleTitle">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>
@@ -82,6 +82,13 @@ __PYCALC_KEYBOARD_CSS__
         </button>
       </header>
       <div class="display-body">
+        <fieldset class="display-group">
+          <legend data-i18n="theme.label"></legend>
+          <div class="display-options">
+            <label><input type="radio" name="ui-theme" value="light"> <span data-i18n="theme.light"></span></label>
+            <label><input type="radio" name="ui-theme" value="dark"> <span data-i18n="theme.dark"></span></label>
+          </div>
+        </fieldset>
         <fieldset class="display-group">
           <legend data-i18n="display.sympy"></legend>
           <div class="display-options">
@@ -158,6 +165,70 @@ __PYCALC_KEYBOARD_CSS__
             <span data-i18n="display.hidePlotResult"></span>
           </label>
         </fieldset>
+      </div>
+    </section>
+  </div>
+
+  <div id="ai-dialog" class="display-dialog hidden">
+    <div class="display-backdrop" id="ai-backdrop"></div>
+    <section class="display-panel ai-panel" role="dialog" aria-modal="true" aria-labelledby="ai-title">
+      <header class="display-header">
+        <h2 id="ai-title" data-i18n="ai.title"></h2>
+        <button id="ai-close" class="icon-btn" type="button" data-i18n-title="display.close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+        </button>
+      </header>
+      <div class="display-body ai-body">
+        <div class="ai-section">
+          <label class="ai-field-label" for="ai-user-prompt" data-i18n="ai.promptLabel"></label>
+          <textarea id="ai-user-prompt" class="ai-textarea" rows="4" data-i18n-placeholder="ai.promptPlaceholder"></textarea>
+
+          <div class="ai-options">
+            <div class="ai-history-row">
+              <label class="ai-inline-label" for="ai-history-scope" data-i18n="ai.historyLabel"></label>
+              <select id="ai-history-scope" class="compact-select">
+                <option value="recent" data-i18n="ai.historyRecent"></option>
+                <option value="all" data-i18n="ai.historyAll"></option>
+                <option value="none" data-i18n="ai.historyNone"></option>
+              </select>
+              <label id="ai-history-count-wrap" class="ai-count-wrap">
+                <input id="ai-history-count" class="compact-input ai-count-input" type="number" min="1" max="100" value="5">
+                <span data-i18n="ai.historyUnit"></span>
+              </label>
+            </div>
+            <div class="ai-checks">
+              <label id="ai-include-outputs-wrap" class="ai-check">
+                <input id="ai-include-outputs" type="checkbox" checked>
+                <span data-i18n="ai.includeOutputs"></span>
+              </label>
+              <label class="ai-check">
+                <input id="ai-include-editor" type="checkbox" checked>
+                <span data-i18n="ai.includeEditor"></span>
+              </label>
+              <label class="ai-check">
+                <input id="ai-include-context" type="checkbox" checked>
+                <span data-i18n="ai.includeContext"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="ai-actions">
+            <button id="ai-copy-prompt" class="run-btn" type="button" data-i18n="ai.copyPrompt"></button>
+          </div>
+        </div>
+
+        <hr class="ai-divider">
+
+        <div class="ai-section">
+          <div class="ai-label-row">
+            <label class="ai-field-label" for="ai-response" data-i18n="ai.responseLabel"></label>
+            <button id="ai-paste-response" class="secondary ai-mini-btn" type="button" data-i18n="editor.pasteTitle"></button>
+          </div>
+          <textarea id="ai-response" class="ai-textarea ai-textarea-code" rows="5" spellcheck="false" data-i18n-placeholder="ai.responsePlaceholder"></textarea>
+          <div class="ai-actions">
+            <button id="ai-extract-code" class="run-btn" type="button" data-i18n="ai.extractCode"></button>
+          </div>
+        </div>
       </div>
     </section>
   </div>

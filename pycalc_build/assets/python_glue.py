@@ -53,6 +53,7 @@ _PYCALC_SKIP_NAMES = {
 _PYCALC_MAX_SNAPSHOT = 32 * 1024 * 1024
 _PYCALC_MAX_RESULT = 20000
 _PYCALC_MAX_IMAGES = 20
+_PYCALC_MAX_DISPLAYS = 50
 _PYCALC_MAX_ROWS = 300
 
 _PYCALC_MATH_NAMES = (
@@ -66,6 +67,8 @@ _pycalc_engine = None
 _pycalc_auto = {}
 _pycalc_last_failed = []
 _pycalc_last_size = 0
+_pycalc_display_items = []
+_pycalc_display_rows = 20
 
 _REPR = reprlib.Repr()
 _REPR.maxstring = 90
@@ -1214,8 +1217,92 @@ def _pycalc_plotly_result(value):
         return None
 
 
+def _pycalc_figure_png(figure):
+    import base64
+
+    try:
+        buffer = io.BytesIO()
+        figure.savefig(buffer, format="png", dpi=110, bbox_inches="tight")
+        data = base64.b64encode(buffer.getvalue()).decode("ascii")
+        if "matplotlib.pyplot" in sys.modules:
+            try:
+                import matplotlib.pyplot as plt
+
+                plt.close(figure)
+            except Exception:
+                pass
+        return data
+    except Exception:
+        return None
+
+
+def _pycalc_format_value(value, dataframe_rows=20, capture_figure=False):
+    if capture_figure and _pycalc_is_figure(value):
+        image_png = _pycalc_figure_png(value)
+        if image_png:
+            return {
+                "result": None,
+                "resultMathML": None,
+                "resultLatex": None,
+                "resultMathMLAll": None,
+                "resultPretty": None,
+                "resultTable": None,
+                "resultNumbers": None,
+                "resultArray": None,
+                "resultPlotly": None,
+                "imagePng": image_png,
+            }
+
+    result = _pycalc_truncate(repr(value))
+    result_mathml, result_latex = _pycalc_sympy_math(value)
+    result_pretty = _pycalc_pretty_repr(value) if _pycalc_has_numpy(value) else None
+    result_array = None
+    try:
+        import numpy as _np
+
+        if isinstance(value, _np.ndarray):
+            result_array = _pycalc_array_info(value)
+    except Exception:
+        pass
+    result_table = None
+    result_numbers = None
+    if _pycalc_is_dataframe(value):
+        result_table = _pycalc_dataframe_table(value, dataframe_rows)
+    elif _pycalc_has_floating(value):
+        result_numbers = _pycalc_number_tree(value)
+    result_math_all = _pycalc_math_all(value) if _pycalc_has_sympy(value) else None
+    result_plotly = _pycalc_plotly_result(value)
+    return {
+        "result": result,
+        "resultMathML": result_mathml,
+        "resultLatex": result_latex,
+        "resultMathMLAll": result_math_all,
+        "resultPretty": result_pretty,
+        "resultTable": result_table,
+        "resultNumbers": result_numbers,
+        "resultArray": result_array,
+        "resultPlotly": result_plotly,
+        "imagePng": None,
+    }
+
+
+def _pycalc_display(*objs):
+    """Display one or more objects with rich formatting, like the last expression of a cell."""
+    for obj in objs:
+        if len(_pycalc_display_items) >= _PYCALC_MAX_DISPLAYS:
+            break
+        _pycalc_display_items.append(
+            _pycalc_format_value(obj, _pycalc_display_rows, capture_figure=True)
+        )
+
+
+builtins.display = _pycalc_display
+
+
 def _pycalc_run(code, display_json="{}"):
+    global _pycalc_display_rows
     globals_dict = _pycalc_user_globals()
+    _pycalc_display_items.clear()
     try:
         try:
             options = json.loads(display_json or "{}")
@@ -1226,16 +1313,19 @@ def _pycalc_run(code, display_json="{}"):
             dataframe_rows = max(1, min(200, int(dataframe_rows)))
         except Exception:
             dataframe_rows = 20
+        _pycalc_display_rows = dataframe_rows
         tree = ast.parse(code, "<cell>", "exec")
-        result = None
-        result_mathml = None
-        result_latex = None
-        result_math_all = None
-        result_pretty = None
-        result_table = None
-        result_numbers = None
-        result_array = None
-        result_plotly = None
+        formatted = {
+            "result": None,
+            "resultMathML": None,
+            "resultLatex": None,
+            "resultMathMLAll": None,
+            "resultPretty": None,
+            "resultTable": None,
+            "resultNumbers": None,
+            "resultArray": None,
+            "resultPlotly": None,
+        }
         if tree.body and isinstance(tree.body[-1], ast.Expr):
             body = ast.Module(body=tree.body[:-1], type_ignores=[])
             if body.body:
@@ -1244,46 +1334,39 @@ def _pycalc_run(code, display_json="{}"):
             value = eval(compile(expression, "<cell>", "eval"), globals_dict)
             if value is not None:
                 globals_dict["_"] = value
-                result = _pycalc_truncate(repr(value))
-                result_mathml, result_latex = _pycalc_sympy_math(value)
-                if _pycalc_has_numpy(value):
-                    result_pretty = _pycalc_pretty_repr(value)
-                try:
-                    import numpy as _np
-                    if isinstance(value, _np.ndarray):
-                        result_array = _pycalc_array_info(value)
-                except Exception:
-                    pass
-                if _pycalc_is_dataframe(value):
-                    result_table = _pycalc_dataframe_table(value, dataframe_rows)
-                elif _pycalc_has_floating(value):
-                    result_numbers = _pycalc_number_tree(value)
-                if _pycalc_has_sympy(value):
-                    result_math_all = _pycalc_math_all(value)
-                result_plotly = _pycalc_plotly_result(value)
+                formatted = _pycalc_format_value(value, dataframe_rows)
                 # ans always points at the most recent non-None cell result;
                 # None / statements / errors leave the previous value intact.
                 globals_dict["ans"] = value
         else:
             exec(compile(tree, "<cell>", "exec"), globals_dict)
+        displays = list(_pycalc_display_items)
+        _pycalc_display_items.clear()
         return json.dumps(
             {
                 "ok": True,
-                "result": result,
-                "resultMathML": result_mathml,
-                "resultLatex": result_latex,
-                "resultMathMLAll": result_math_all,
-                "resultPretty": result_pretty,
-                "resultTable": result_table,
-                "resultNumbers": result_numbers,
-                "resultArray": result_array,
-                "resultPlotly": result_plotly,
+                "result": formatted["result"],
+                "resultMathML": formatted["resultMathML"],
+                "resultLatex": formatted["resultLatex"],
+                "resultMathMLAll": formatted["resultMathMLAll"],
+                "resultPretty": formatted["resultPretty"],
+                "resultTable": formatted["resultTable"],
+                "resultNumbers": formatted["resultNumbers"],
+                "resultArray": formatted["resultArray"],
+                "resultPlotly": formatted["resultPlotly"],
+                "displays": displays,
             },
             ensure_ascii=False,
         )
     except BaseException:
+        displays = list(_pycalc_display_items)
+        _pycalc_display_items.clear()
         return json.dumps(
-            {"ok": False, "error": _pycalc_truncate(traceback.format_exc())},
+            {
+                "ok": False,
+                "error": _pycalc_truncate(traceback.format_exc()),
+                "displays": displays,
+            },
             ensure_ascii=False,
         )
 

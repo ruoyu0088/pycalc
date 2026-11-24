@@ -303,6 +303,7 @@
 
   const BUILTIN_COMPLETIONS = [
     ['print', '(*args, sep=" ", end="\\n", file=None, flush=False)'],
+    ['display', '(*objs)'],
     ['len', '(obj, /)'],
     ['range', '(start, stop=None, step=1)'],
     ['abs', '(x, /)'],
@@ -420,6 +421,11 @@
     hidePlotResult: false,
     showPrompts: true,
     sessionBarHidden: false,
+    aiHistoryScope: 'recent',
+    aiHistoryCount: 5,
+    aiIncludeOutputs: true,
+    aiIncludeEditor: true,
+    aiIncludeContext: true,
   };
 
   const state = {
@@ -971,6 +977,12 @@
       hidePlotResult: Boolean(meta.hidePlotResult),
       showPrompts: meta.showPrompts !== false,
       sessionBarHidden: Boolean(meta.sessionBarHidden),
+      aiHistoryScope: ['none', 'recent', 'all'].includes(meta.aiHistoryScope)
+        ? meta.aiHistoryScope : 'recent',
+      aiHistoryCount: Math.max(1, Math.min(100, Number(meta.aiHistoryCount) || 5)),
+      aiIncludeOutputs: meta.aiIncludeOutputs !== false,
+      aiIncludeEditor: meta.aiIncludeEditor !== false,
+      aiIncludeContext: meta.aiIncludeContext !== false,
     };
   }
 
@@ -996,6 +1008,11 @@
         hidePlotResult: state.ui.hidePlotResult,
         showPrompts: state.ui.showPrompts,
         sessionBarHidden: state.ui.sessionBarHidden,
+        aiHistoryScope: state.ui.aiHistoryScope,
+        aiHistoryCount: state.ui.aiHistoryCount,
+        aiIncludeOutputs: state.ui.aiIncludeOutputs,
+        aiIncludeEditor: state.ui.aiIncludeEditor,
+        aiIncludeContext: state.ui.aiIncludeContext,
       });
     } catch (err) {
       console.warn('could not save UI settings', err);
@@ -2047,6 +2064,14 @@
     const parts = [];
     if (entry.stdout) parts.push(entry.stdout.replace(/\n$/, ''));
     if (entry.stderr) parts.push(entry.stderr.replace(/\n$/, ''));
+    if (Array.isArray(entry.displays)) {
+      for (const item of entry.displays) {
+        if (!item || item.resultPlotly || item.image) continue;
+        if (item.result !== null && item.result !== undefined) {
+          parts.push(String(item.result));
+        }
+      }
+    }
     if (entry.result !== null && entry.result !== undefined) parts.push(String(entry.result));
     if (entry.error) parts.push(String(entry.error));
     return parts.filter(Boolean).join('\n');
@@ -2056,6 +2081,7 @@
     if (entry.outputHidden) return false;
     return Boolean(
       entry.stdout || entry.stderr ||
+      (Array.isArray(entry.displays) && entry.displays.length) ||
       (entry.result !== null && entry.result !== undefined) ||
       entry.error || entry.resultPlotly ||
       (entry.images && entry.images.length)
@@ -2702,6 +2728,52 @@
     return host;
   }
 
+  function renderFormattedResult(item, outputRow, body, { hideResult = false } = {}) {
+    if (!item) return;
+    if (item.image && item.image.blob) {
+      const images = el('div', 'images');
+      images.appendChild(makeImage(item.image.blob, item.image.mime));
+      body.appendChild(images);
+      return;
+    }
+    const plotlyNode = item.resultPlotly ? plotlyFigure(item.resultPlotly) : null;
+    if (plotlyNode) {
+      outputRow.classList.add('plotly-row');
+      body.appendChild(plotlyNode);
+      return;
+    }
+    if (hideResult || item.result === null || item.result === undefined) return;
+    if (state.ui.dataframeOutput === 'table' && item.resultTable) {
+      body.appendChild(dataframeTable(item.resultTable));
+    } else if (
+      state.ui.numpyOutput === 'table'
+      && item.resultArray
+      && [1, 2, 3].includes(item.resultArray.shape.length)
+    ) {
+      const table = numpyTable(item.resultArray);
+      if (table) {
+        body.appendChild(table);
+      } else {
+        const pretty = item.resultArray.shape.length === 1
+          ? formatArrayPretty(item.resultArray)
+          : null;
+        body.appendChild(el('pre', 'result', pretty || entryResultText(item)));
+      }
+    } else {
+      let math = null;
+      if (state.ui.sympyOutput === 'all') {
+        math = mathResult(item.resultMathMLAll || item.resultMathML);
+      } else if (state.ui.sympyOutput === 'math') {
+        math = mathResult(item.resultMathML);
+      }
+      if (math) {
+        body.appendChild(math);
+      } else {
+        body.appendChild(el('pre', 'result', entryResultText(item)));
+      }
+    }
+  }
+
   function makeCell(entry) {
     const cell = el('div', 'entry');
     const inputRow = el('div', 'io-row io-input');
@@ -2715,47 +2787,14 @@
       const body = el('div', 'output-body');
       if (entry.stdout) body.appendChild(el('pre', 'stream', entry.stdout));
       if (entry.stderr) body.appendChild(el('pre', 'stream stderr', entry.stderr));
-      const plotlyNode = entry.resultPlotly ? plotlyFigure(entry.resultPlotly) : null;
-      if (plotlyNode) outputRow.classList.add('plotly-row');
-      const hideResult = state.ui.hidePlotResult && entry.images && entry.images.length > 0;
-      if (
-        !hideResult
-        && !plotlyNode
-        && entry.result !== null
-        && entry.result !== undefined
-      ) {
-        if (state.ui.dataframeOutput === 'table' && entry.resultTable) {
-          body.appendChild(dataframeTable(entry.resultTable));
-        } else if (
-          state.ui.numpyOutput === 'table'
-          && entry.resultArray
-          && [1, 2, 3].includes(entry.resultArray.shape.length)
-        ) {
-          const table = numpyTable(entry.resultArray);
-          if (table) {
-            body.appendChild(table);
-          } else {
-            const pretty = entry.resultArray.shape.length === 1
-              ? formatArrayPretty(entry.resultArray)
-              : null;
-            body.appendChild(el('pre', 'result', pretty || entryResultText(entry)));
-          }
-        } else {
-          let math = null;
-          if (state.ui.sympyOutput === 'all') {
-            math = mathResult(entry.resultMathMLAll || entry.resultMathML);
-          } else if (state.ui.sympyOutput === 'math') {
-            math = mathResult(entry.resultMathML);
-          }
-          if (math) {
-            body.appendChild(math);
-          } else {
-            body.appendChild(el('pre', 'result', entryResultText(entry)));
-          }
+      if (Array.isArray(entry.displays)) {
+        for (const item of entry.displays) {
+          renderFormattedResult(item, outputRow, body);
         }
       }
+      const hideResult = state.ui.hidePlotResult && entry.images && entry.images.length > 0;
+      renderFormattedResult(entry, outputRow, body, { hideResult });
       if (entry.error) body.appendChild(el('pre', 'error', entry.error));
-      if (plotlyNode) body.appendChild(plotlyNode);
       if (entry.images && entry.images.length) {
         const images = el('div', 'images');
         for (const image of entry.images) {
@@ -3006,6 +3045,7 @@
       resultNumbers: null,
       resultArray: null,
       resultPlotly: null,
+      displays: [],
       error: null,
       images: [],
     };
@@ -3032,6 +3072,26 @@
       entry.resultNumbers = result.ok ? (result.resultNumbers || null) : null;
       entry.resultArray = result.ok ? (result.resultArray || null) : null;
       entry.resultPlotly = result.ok ? (result.resultPlotly || null) : null;
+      entry.displays = Array.isArray(result.displays)
+        ? result.displays.map((item) => {
+          if (!item || typeof item !== 'object') return null;
+          const next = {
+            result: item.result ?? null,
+            resultMathML: item.resultMathML || null,
+            resultLatex: item.resultLatex || null,
+            resultMathMLAll: item.resultMathMLAll || null,
+            resultPretty: item.resultPretty || null,
+            resultTable: item.resultTable || null,
+            resultNumbers: item.resultNumbers || null,
+            resultArray: item.resultArray || null,
+            resultPlotly: item.resultPlotly || null,
+            image: item.imagePng
+              ? { mime: 'image/png', blob: new Blob([b64ToBytes(item.imagePng)], { type: 'image/png' }) }
+              : null,
+          };
+          return next;
+        }).filter(Boolean)
+        : [];
       entry.error = result.ok ? null : result.error;
       try {
         const images = JSON.parse(await py.figures());
@@ -3071,7 +3131,8 @@
     $('language-select').disabled = state.busy;
     const runKey = $('run-key');
     if (runKey) runKey.disabled = state.busy;
-    $('theme-toggle').disabled = state.busy;
+    const aiBtn = $('ai-prompt');
+    if (aiBtn) aiBtn.disabled = state.busy;
     $('display-settings').disabled = state.busy;
     for (const input of $('library-list').querySelectorAll('input')) {
       input.disabled = state.busy || !state.ready;
@@ -3101,10 +3162,8 @@
   function applyTheme(theme, persist = true) {
     state.ui.theme = theme === 'dark' ? 'dark' : 'light';
     document.documentElement.dataset.theme = state.ui.theme;
-    $('theme-toggle').innerHTML = state.ui.theme === 'dark'
-      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg>'
-      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8Z"></path></svg>';
-    $('theme-toggle').title = I18n.t('theme.toggleTitle');
+    const themeRadio = document.querySelector(`input[name="ui-theme"][value="${state.ui.theme}"]`);
+    if (themeRadio) themeRadio.checked = true;
     if (editor && typeof editor.setTheme === 'function') editor.setTheme(state.ui.theme);
     applyPlotlyTheme();
     requestAnimationFrame(applyPlotlyTheme);
@@ -3128,6 +3187,7 @@
       const input = document.querySelector(`input[name="${name}"][value="${value}"]`);
       if (input) input.checked = true;
     };
+    setRadio('ui-theme', state.ui.theme);
     setRadio('sympy-output', state.ui.sympyOutput);
     setRadio('numpy-output', state.ui.numpyOutput);
     setRadio('dataframe-output', state.ui.dataframeOutput);
@@ -3164,6 +3224,357 @@
   function closeDisplaySettings() {
     const dialog = $('display-dialog');
     if (dialog) dialog.classList.add('hidden');
+  }
+
+  // ---------------------------------------------------------------------
+  // AI Prompt Helper dialog
+  // ---------------------------------------------------------------------
+
+  function aiMarkdownFence(text, lang = '') {
+    const body = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+    let maxRun = 2;
+    const matches = body.match(/`+/g);
+    if (matches) {
+      for (const m of matches) {
+        if (m.length > maxRun) maxRun = m.length;
+      }
+    }
+    const fence = '`'.repeat(maxRun + 1);
+    return `${fence}${lang}\n${body}\n${fence}`;
+  }
+
+  function truncateAiText(text, maxChars) {
+    const value = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+    if (value.length <= maxChars) return value;
+    return `${value.slice(0, maxChars).trimEnd()}\n${I18n.t('ai.tpl.truncated')}`;
+  }
+
+  function formatAiHistoryOutput(entry) {
+    if (!entry || entry.outputHidden) return '';
+    const parts = [];
+    const text = outputText(entry);
+    if (text) parts.push(truncateAiText(text, 1200));
+    const displayImages = Array.isArray(entry.displays)
+      ? entry.displays.filter((item) => item && item.image).length : 0;
+    const totalImages = (entry.images ? entry.images.length : 0) + displayImages;
+    if (totalImages > 0) {
+      parts.push(I18n.t('ai.tpl.imageNote', { count: totalImages }));
+    }
+    const hasDisplayPlotly = Array.isArray(entry.displays)
+      && entry.displays.some((item) => item && item.resultPlotly);
+    if (entry.resultPlotly || hasDisplayPlotly) {
+      parts.push(I18n.t('ai.tpl.plotlyNote'));
+    }
+    return parts.join('\n');
+  }
+
+  function buildAiPrompt(overrides = {}) {
+    const scope = overrides.historyScope !== undefined
+      ? overrides.historyScope : state.ui.aiHistoryScope;
+    const count = Math.max(
+      1,
+      Math.min(100, Number(overrides.historyCount !== undefined ? overrides.historyCount : state.ui.aiHistoryCount) || 5)
+    );
+    const includeOutputs = overrides.includeOutputs !== undefined
+      ? Boolean(overrides.includeOutputs) : Boolean(state.ui.aiIncludeOutputs);
+    const includeEditor = overrides.includeEditor !== undefined
+      ? Boolean(overrides.includeEditor) : Boolean(state.ui.aiIncludeEditor);
+    const includeContext = overrides.includeContext !== undefined
+      ? Boolean(overrides.includeContext) : Boolean(state.ui.aiIncludeContext);
+    const userPrompt = String(
+      overrides.userPrompt !== undefined
+        ? overrides.userPrompt
+        : ($('ai-user-prompt') ? $('ai-user-prompt').value : '')
+    ).replace(/\r\n?/g, '\n').trim();
+
+    const sections = [];
+    sections.push(I18n.t('ai.tpl.intro'));
+
+    // Runtime & libraries section
+    const envLines = [
+      I18n.t('ai.tpl.envHeading'),
+      I18n.t('ai.tpl.runtime', {
+        python: CFG.pythonVersion || '3',
+        pyodide: CFG.pyodideVersion || '',
+      }),
+      I18n.t('ai.tpl.math'),
+    ];
+
+    const selectedLibs = AVAILABLE_LIBS.filter((lib) => state.libraries.includes(lib.id));
+    if (selectedLibs.length > 0) {
+      const formatted = selectedLibs.map((lib) => `\`${lib.alias}\` (\`${lib.id}\`)`).join(', ');
+      envLines.push(I18n.t('ai.tpl.autoImports', { libs: formatted }));
+    } else {
+      envLines.push(I18n.t('ai.tpl.noAutoImports'));
+    }
+
+    const availablePackages = new Set(AVAILABLE_LIBS.map((lib) => lib.package));
+    const uncheckedNames = [];
+    for (const lib of AVAILABLE_LIBS) {
+      if (!state.libraries.includes(lib.id) && !uncheckedNames.includes(lib.id)) {
+        uncheckedNames.push(lib.id);
+      }
+    }
+    for (const pkg of (Array.isArray(CFG.libs) ? CFG.libs : [])) {
+      if (!availablePackages.has(pkg) && !uncheckedNames.includes(pkg)) {
+        uncheckedNames.push(pkg);
+      }
+    }
+    if (uncheckedNames.length > 0) {
+      envLines.push(I18n.t('ai.tpl.installedImports', {
+        libs: uncheckedNames.map((name) => `\`${name}\``).join(', '),
+      }));
+    } else if (selectedLibs.length === 0) {
+      envLines.push(I18n.t('ai.tpl.stdOnly'));
+    }
+
+    envLines.push(I18n.t('ai.tpl.outputRule'));
+
+    const hasMatplotlib =
+      (Array.isArray(CFG.libs) && CFG.libs.includes('matplotlib')) ||
+      AVAILABLE_LIBS.some((lib) => lib.package === 'matplotlib' || lib.id.startsWith('matplotlib'));
+    if (hasMatplotlib) {
+      envLines.push(I18n.t('ai.tpl.matplotlibRule'));
+    }
+    const hasPlotly =
+      Boolean(CFG.plotlyCharts) ||
+      (Array.isArray(CFG.libs) && CFG.libs.includes('plotly')) ||
+      AVAILABLE_LIBS.some((lib) => lib.package === 'plotly' || lib.id.startsWith('plotly'));
+    if (hasPlotly) {
+      envLines.push(I18n.t('ai.tpl.plotlyRule'));
+    }
+    sections.push(envLines.join('\n'));
+
+    // Current session variables & functions
+    if (includeContext && (state.variables.length > 0 || state.functions.length > 0)) {
+      const ctxLines = [I18n.t('ai.tpl.contextHeading')];
+      if (state.variables.length > 0) {
+        ctxLines.push(I18n.t('ai.tpl.variablesLabel'));
+        for (const item of state.variables) {
+          const val = truncateAiText(item.value || '', 200).replace(/\n/g, ' ');
+          ctxLines.push(`- \`${item.name}\` (${item.type}): ${val}`);
+        }
+      }
+      if (state.functions.length > 0) {
+        ctxLines.push(I18n.t('ai.tpl.functionsLabel'));
+        for (const fn of state.functions) {
+          ctxLines.push(`- \`${fn.name}${fn.params || '()'}\``);
+        }
+      }
+      sections.push(ctxLines.join('\n'));
+    }
+
+    // Session history
+    if (scope !== 'none' && state.history.length > 0) {
+      const entries = scope === 'all' ? state.history : state.history.slice(-count);
+      const histBlocks = [I18n.t('ai.tpl.historyHeading')];
+      for (const entry of entries) {
+        const parts = [
+          I18n.t('ai.tpl.inputLabel', { n: entry.n }),
+          aiMarkdownFence(entry.code || '', 'python'),
+        ];
+        if (includeOutputs) {
+          const out = formatAiHistoryOutput(entry);
+          if (out) {
+            parts.push(I18n.t('ai.tpl.outputLabel', { n: entry.n }));
+            parts.push(aiMarkdownFence(out, 'text'));
+          }
+        }
+        histBlocks.push(parts.join('\n'));
+      }
+      sections.push(histBlocks.join('\n\n'));
+    }
+
+    // Current editor draft
+    if (includeEditor && editor) {
+      const currentCode = String(editor.getValue() || '').replace(/\r\n?/g, '\n').trim();
+      if (currentCode) {
+        sections.push(`${I18n.t('ai.tpl.editorHeading')}\n${aiMarkdownFence(currentCode, 'python')}`);
+      }
+    }
+
+    // User request
+    if (userPrompt) {
+      sections.push(`${I18n.t('ai.tpl.requestHeading')}\n${userPrompt}`);
+    }
+
+    // Output format instructions
+    sections.push(`${I18n.t('ai.tpl.formatHeading')}\n${I18n.t('ai.tpl.formatRule')}`);
+
+    return sections.join('\n\n');
+  }
+
+  function extractCodeFromAiResponse(raw) {
+    const text = String(raw == null ? '' : raw).replace(/\r\n?/g, '\n');
+    if (!text.trim()) return '';
+
+    const lines = text.split('\n');
+    const pythonBlocks = [];
+    const plainBlocks = [];
+    const otherBlocks = [];
+
+    let inFence = false;
+    let fenceChar = '';
+    let fenceLen = 0;
+    let fenceLang = '';
+    let buf = [];
+
+    const flushBlock = () => {
+      const content = buf.join('\n').replace(/^\n+|\n+$/g, '');
+      if (content.trim()) {
+        if (['python', 'py', 'python3', 'ipython'].includes(fenceLang)) {
+          pythonBlocks.push(content);
+        } else if (!fenceLang) {
+          plainBlocks.push(content);
+        } else {
+          otherBlocks.push(content);
+        }
+      }
+      buf = [];
+    };
+
+    for (const line of lines) {
+      if (!inFence) {
+        const open = line.match(/^\s*(`{3,}|~{3,})\s*([^\s`~]*)\s*$/);
+        if (open) {
+          inFence = true;
+          fenceChar = open[1][0];
+          fenceLen = open[1].length;
+          fenceLang = (open[2] || '').toLowerCase();
+          buf = [];
+          continue;
+        }
+      } else {
+        const close = line.match(/^\s*(`{3,}|~{3,})\s*$/);
+        if (close && close[1][0] === fenceChar && close[1].length >= fenceLen) {
+          flushBlock();
+          inFence = false;
+          fenceChar = '';
+          fenceLen = 0;
+          fenceLang = '';
+          continue;
+        }
+        buf.push(line);
+      }
+    }
+    if (inFence) flushBlock();
+
+    if (pythonBlocks.length > 0) return pythonBlocks.join('\n\n');
+    if (plainBlocks.length > 0) return plainBlocks.join('\n\n');
+    if (otherBlocks.length > 0) return otherBlocks.join('\n\n');
+    return text.trim();
+  }
+
+  function renderAiOptions() {
+    const scopeEl = $('ai-history-scope');
+    if (scopeEl) scopeEl.value = state.ui.aiHistoryScope;
+    const countEl = $('ai-history-count');
+    if (countEl) countEl.value = String(state.ui.aiHistoryCount);
+    const countWrap = $('ai-history-count-wrap');
+    if (countWrap) countWrap.classList.toggle('hidden', state.ui.aiHistoryScope !== 'recent');
+
+    const outputsEl = $('ai-include-outputs');
+    const outputsWrap = $('ai-include-outputs-wrap');
+    if (outputsEl) {
+      outputsEl.checked = Boolean(state.ui.aiIncludeOutputs);
+      outputsEl.disabled = state.ui.aiHistoryScope === 'none';
+    }
+    if (outputsWrap) {
+      outputsWrap.classList.toggle('disabled', state.ui.aiHistoryScope === 'none');
+    }
+
+    const editorEl = $('ai-include-editor');
+    if (editorEl) editorEl.checked = Boolean(state.ui.aiIncludeEditor);
+    const contextEl = $('ai-include-context');
+    if (contextEl) contextEl.checked = Boolean(state.ui.aiIncludeContext);
+  }
+
+  function syncAiOptionsFromUi() {
+    const scopeEl = $('ai-history-scope');
+    if (scopeEl && ['none', 'recent', 'all'].includes(scopeEl.value)) {
+      state.ui.aiHistoryScope = scopeEl.value;
+    }
+    const countEl = $('ai-history-count');
+    if (countEl) {
+      state.ui.aiHistoryCount = Math.max(1, Math.min(100, Number(countEl.value) || 5));
+    }
+    const outputsEl = $('ai-include-outputs');
+    if (outputsEl) state.ui.aiIncludeOutputs = Boolean(outputsEl.checked);
+    const editorEl = $('ai-include-editor');
+    if (editorEl) state.ui.aiIncludeEditor = Boolean(editorEl.checked);
+    const contextEl = $('ai-include-context');
+    if (contextEl) state.ui.aiIncludeContext = Boolean(contextEl.checked);
+    renderAiOptions();
+    saveUiMeta();
+  }
+
+  function openAiDialog() {
+    renderAiOptions();
+    const dialog = $('ai-dialog');
+    if (!dialog) return;
+    dialog.classList.remove('hidden');
+    const promptInput = $('ai-user-prompt');
+    if (promptInput) promptInput.focus();
+  }
+
+  function closeAiDialog() {
+    const dialog = $('ai-dialog');
+    if (dialog) dialog.classList.add('hidden');
+  }
+
+  function copyAiPrompt() {
+    syncAiOptionsFromUi();
+    const text = buildAiPrompt();
+    return copyTextToClipboard(text)
+      .then((ok) => {
+        toast(ok ? 'ai.promptCopied' : 'console.clipboardFailed');
+        return ok;
+      })
+      .catch(() => {
+        toast('console.clipboardFailed');
+        return false;
+      });
+  }
+
+  function pasteIntoAiResponse() {
+    const field = $('ai-response');
+    if (!field) return Promise.resolve(false);
+    return readTextFromClipboard()
+      .then((raw) => {
+        const text = String(raw == null ? '' : raw).replace(/\r\n?/g, '\n');
+        if (!text) {
+          toast('editor.pasteEmpty');
+          field.focus();
+          return false;
+        }
+        field.value = text;
+        field.focus();
+        return true;
+      })
+      .catch(() => {
+        toast('editor.pasteFailed');
+        field.focus();
+        return false;
+      });
+  }
+
+  function applyExtractedAiCode() {
+    const field = $('ai-response');
+    if (!field || !editor) return false;
+    const code = extractCodeFromAiResponse(field.value);
+    if (!code) {
+      toast('ai.extractEmpty');
+      field.focus();
+      return false;
+    }
+    setEditorText(code, true);
+    state.historyNav.index = null;
+    state.historyNav.draft = code;
+    field.value = '';
+    closeAiDialog();
+    if (editor.focus) editor.focus();
+    toast('ai.extracted');
+    return true;
   }
 
   function applyDisplaySettings({ rowsOnly = false } = {}) {
@@ -3264,7 +3675,11 @@
   function applyLanguageToUi() {
     I18n.setLanguage(state.ui.language);
     $('language-select').value = state.ui.language;
-    $('theme-toggle').title = I18n.t('theme.toggleTitle');
+    const aiBtn = $('ai-prompt');
+    if (aiBtn) {
+      aiBtn.title = I18n.t('ai.open');
+      aiBtn.setAttribute('aria-label', aiBtn.title);
+    }
     $('session-select').title = I18n.t('session.selectTitle');
     $('session-title').title = I18n.t('session.switchTitle');
     $('session-title').setAttribute('aria-label', I18n.t('session.switchTitle'));
@@ -3355,6 +3770,7 @@
       if (event.key !== 'Escape') return;
       closeSessionMenu();
       closeDisplaySettings();
+      closeAiDialog();
     });
     window.addEventListener('resize', closeSessionMenu);
     $('session-new').addEventListener('click', newSession);
@@ -3379,10 +3795,36 @@
     $('display-close').addEventListener('click', closeDisplaySettings);
     $('display-backdrop').addEventListener('click', closeDisplaySettings);
     $('display-dialog').addEventListener('change', (event) => {
+      if (event.target && event.target.name === 'ui-theme') {
+        applyTheme(event.target.value);
+        return;
+      }
       applyDisplaySettings({ rowsOnly: event.target.id === 'display-dataframe-rows' });
     });
-    $('theme-toggle').addEventListener('click', () => {
-      applyTheme(state.ui.theme === 'dark' ? 'light' : 'dark');
+    $('ai-prompt').addEventListener('click', openAiDialog);
+    $('ai-close').addEventListener('click', closeAiDialog);
+    $('ai-backdrop').addEventListener('click', closeAiDialog);
+    $('ai-history-scope').addEventListener('change', syncAiOptionsFromUi);
+    $('ai-history-count').addEventListener('change', syncAiOptionsFromUi);
+    $('ai-include-outputs').addEventListener('change', syncAiOptionsFromUi);
+    $('ai-include-editor').addEventListener('change', syncAiOptionsFromUi);
+    $('ai-include-context').addEventListener('change', syncAiOptionsFromUi);
+    $('ai-copy-prompt').addEventListener('click', copyAiPrompt);
+    $('ai-paste-response').addEventListener('click', pasteIntoAiResponse);
+    $('ai-extract-code').addEventListener('click', applyExtractedAiCode);
+    $('ai-user-prompt').addEventListener('keydown', (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        event.preventDefault();
+        event.stopPropagation();
+        copyAiPrompt();
+      }
+    });
+    $('ai-response').addEventListener('keydown', (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        event.preventDefault();
+        event.stopPropagation();
+        applyExtractedAiCode();
+      }
     });
     $('session-bar-toggle').addEventListener('click', () => {
       if (window.innerWidth > 880) return;
@@ -3430,6 +3872,8 @@
 
     document.addEventListener('keydown', (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        const aiDialog = $('ai-dialog');
+        if (aiDialog && !aiDialog.classList.contains('hidden')) return;
         event.preventDefault();
         runCode();
       }
@@ -3614,9 +4058,6 @@
     $('language-select').value = state.ui.language;
     const runKey = $('run-key');
     if (runKey) runKey.value = state.ui.runKey;
-    $('theme-toggle').innerHTML = state.ui.theme === 'dark'
-      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg>'
-      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8Z"></path></svg>';
     window.__pycalcRunKeyMode = state.ui.runKey;
     applySidebar();
     applySessionBar();
@@ -3717,6 +4158,7 @@
       stderr: entry.stderr,
       images: (entry.images || []).length,
       plotly: Boolean(entry.resultPlotly),
+      displays: (entry.displays || []).length,
     })),
     undo: () => { undoHistory(); return state.history.length; },
     redo: () => { redoHistory(); return state.history.length; },
@@ -3818,6 +4260,8 @@
     completions: () => getCompletionOptions(),
     attributes: (expr) => getAttributeCompletions(expr),
     signature: (name) => signatureFor(name),
+    buildAiPrompt: (overrides) => buildAiPrompt(overrides),
+    extractAiCode: (text) => extractCodeFromAiResponse(text),
     ui: () => ({ ...state.ui }),
   };
 

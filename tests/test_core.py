@@ -125,6 +125,53 @@ class CoreTests(unittest.TestCase):
         self.assertGreater(clear_pos, paste_pos)
         self.assertIn('data-i18n-title="editor.pasteTitle"', template)
 
+    def test_theme_in_display_dialog_and_ai_button_in_topbar(self):
+        template = (ROOT / "pycalc_build" / "templates" / "page.html").read_text(encoding="utf-8")
+        self.assertNotIn('id="theme-toggle"', template)
+        self.assertIn('id="ai-prompt"', template)
+        self.assertIn('name="ui-theme"', template)
+        for element_id in (
+            'id="ai-dialog"',
+            'id="ai-user-prompt"',
+            'id="ai-history-scope"',
+            'id="ai-history-count"',
+            'id="ai-include-outputs"',
+            'id="ai-include-editor"',
+            'id="ai-include-context"',
+            'id="ai-copy-prompt"',
+            'id="ai-response"',
+            'id="ai-extract-code"',
+        ):
+            self.assertIn(element_id, template)
+
+    def test_builtin_display_in_python_glue(self):
+        glue = (ROOT / "pycalc_build" / "assets" / "python_glue.py").read_text(encoding="utf-8")
+        self.assertIn("builtins.display = _pycalc_display", glue)
+        self.assertIn('"displays": displays', glue)
+        ns = {}
+        exec(compile(glue, "python_glue.py", "exec"), ns)
+        import builtins
+        import json
+
+        try:
+            self.assertIs(builtins.display, ns["_pycalc_display"])
+            out = json.loads(ns["_pycalc_run"]("display(1 + 2, 'hi')\n42"))
+            self.assertTrue(out["ok"])
+            self.assertEqual(out["result"], "42")
+            self.assertEqual([d["result"] for d in out["displays"]], ["3", "'hi'"])
+            # display() results before an exception are preserved
+            err = json.loads(ns["_pycalc_run"]("display(99)\n1 / 0"))
+            self.assertFalse(err["ok"])
+            self.assertEqual([d["result"] for d in err["displays"]], ["99"])
+            # display is a builtin and does not pollute user variables or functions
+            vars_list = json.loads(ns["_pycalc_list_vars"]())
+            funcs_list = json.loads(ns["_pycalc_list_funcs"]())
+            self.assertFalse(any(row["name"] == "display" for row in vars_list))
+            self.assertFalse(any(row["name"] == "display" for row in funcs_list))
+        finally:
+            if hasattr(builtins, "display"):
+                delattr(builtins, "display")
+
     def test_available_libraries(self):
         packages = resolve_closure(LOCK, ["matplotlib"])
         libraries = available_libraries(
