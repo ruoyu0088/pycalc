@@ -117,6 +117,14 @@ class CoreTests(unittest.TestCase):
             with self.subTest(language=language):
                 self.assertEqual(set(MESSAGES[language]), english)
 
+    def test_paste_button_next_to_clear_button(self):
+        template = (ROOT / "pycalc_build" / "templates" / "page.html").read_text(encoding="utf-8")
+        paste_pos = template.find('id="editor-paste"')
+        clear_pos = template.find('id="editor-clear"')
+        self.assertGreater(paste_pos, -1)
+        self.assertGreater(clear_pos, paste_pos)
+        self.assertIn('data-i18n-title="editor.pasteTitle"', template)
+
     def test_available_libraries(self):
         packages = resolve_closure(LOCK, ["matplotlib"])
         libraries = available_libraries(

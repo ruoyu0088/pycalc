@@ -2254,6 +2254,37 @@
     return Promise.resolve(fallbackCopyText(value));
   }
 
+  function readTextFromClipboard() {
+    if (navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+      return navigator.clipboard.readText();
+    }
+    return Promise.reject(new Error('Clipboard read API unavailable'));
+  }
+
+  function pasteFromClipboard() {
+    if (!editor) return Promise.resolve(false);
+    // Invoke readText() synchronously inside the click handler so browsers
+    // (especially Safari / iOS) keep transient user activation.
+    return readTextFromClipboard()
+      .then((raw) => {
+        const text = String(raw == null ? '' : raw).replace(/\r\n?/g, '\n');
+        if (!text) {
+          toast('editor.pasteEmpty');
+          if (editor.focus) editor.focus();
+          return false;
+        }
+        editor.insertAtCursor(text);
+        if (editor.focus) editor.focus();
+        state.historyNav.index = null;
+        return true;
+      })
+      .catch(() => {
+        toast('editor.pasteFailed');
+        if (editor.focus) editor.focus();
+        return false;
+      });
+  }
+
   function handlePromptMenuAction(action) {
     const context = state.promptMenu;
     if (!context) return;
@@ -3333,6 +3364,9 @@
     $('session-delete').addEventListener('click', deleteSession);
     $('history-undo').addEventListener('click', undoHistory);
     $('history-redo').addEventListener('click', redoHistory);
+    $('editor-paste').addEventListener('click', () => {
+      pasteFromClipboard();
+    });
     $('editor-clear').addEventListener('click', () => {
       setEditorText('', true);
       if (editor && editor.focus) editor.focus();

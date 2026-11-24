@@ -293,6 +293,51 @@ def test_mobile_keyboard() -> None:
         browser.eval("document.getElementById('editor-clear').click()")
         assert browser.eval("window.__pycalc.getEditorValue()") == ""
 
+        # Paste button beside Clear inserts clipboard text at the cursor
+        assert browser.eval(
+            "document.getElementById('editor-paste').nextElementSibling === document.getElementById('editor-clear')"
+        ) is True
+        browser.eval("window.__pycalc.setEditorText('ab')")
+        tap_keyboard(browser, "←")
+        pasted = browser.eval(
+            """(async () => {
+              const orig = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+              try {
+                Object.defineProperty(navigator, 'clipboard', {
+                  configurable: true,
+                  value: { readText: () => Promise.resolve('12\\r\\n34') },
+                });
+                document.getElementById('editor-paste').click();
+                await new Promise((r) => setTimeout(r, 50));
+                const afterPaste = window.__pycalc.getEditorValue();
+
+                Object.defineProperty(navigator, 'clipboard', {
+                  configurable: true,
+                  value: { readText: () => Promise.resolve('') },
+                });
+                document.getElementById('editor-paste').click();
+                await new Promise((r) => setTimeout(r, 50));
+                const emptyToast = document.getElementById('toast').textContent;
+
+                Object.defineProperty(navigator, 'clipboard', {
+                  configurable: true,
+                  value: { readText: () => Promise.reject(new Error('denied')) },
+                });
+                document.getElementById('editor-paste').click();
+                await new Promise((r) => setTimeout(r, 50));
+                const failToast = document.getElementById('toast').textContent;
+                return { afterPaste, emptyToast, failToast };
+              } finally {
+                if (orig) Object.defineProperty(navigator, 'clipboard', orig);
+                else delete navigator.clipboard;
+              }
+            })()"""
+        )
+        assert pasted["afterPaste"] == "a12\n34b", pasted
+        assert pasted["emptyToast"] == "剪贴板为空。", pasted
+        assert pasted["failToast"] == "无法读取剪贴板。", pasted
+        browser.eval("document.getElementById('editor-clear').click()")
+
         browser.eval("window.__pycalc.setEditorText('for i in range(10):')")
         tap_keyboard(browser, "⏎")
         assert browser.eval("window.__pycalc.getEditorValue()") == "for i in range(10):\n    "
